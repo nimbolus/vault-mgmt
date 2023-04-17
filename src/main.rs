@@ -22,7 +22,14 @@ struct Cli {
     namespace: String,
 
     /// Log level
-    #[arg(short, long, default_value = "info", value_parser = clap::builder::PossibleValuesParser::new(["error", "warn", "info", "debug", "trace"]).map(|s| tracing::Level::from_str(&s).unwrap()))]
+    #[arg(
+        short,
+        long,
+        default_value = "info",
+        value_parser = clap::builder::PossibleValuesParser::new(
+            ["error", "warn", "info", "debug", "trace"]
+        ).map(|s| tracing::Level::from_str(&s).expect("invalid log level")),
+    )]
     log_level: tracing::Level,
 
     /// Vault domain name, used for TLS verification
@@ -113,8 +120,7 @@ async fn main() -> anyhow::Result<()> {
         Registry::default()
             .with(env_filter)
             .with(tracing_subscriber::fmt::layer()),
-    )
-    .expect("Failed to set tracing subscriber");
+    )?;
 
     match cli.command {
         Commands::Show {} => {
@@ -140,19 +146,11 @@ async fn main() -> anyhow::Result<()> {
                         .labels(ExecIn::Active.to_label_selector()),
                 )
                 .await?;
-            let active = active.iter().next().expect("no active pod found");
+            let active = active.iter().next().ok_or(anyhow::anyhow!(
+                "no active vault pod found. is vault sealed?"
+            ))?;
 
-            step_down(
-                &cli.domain,
-                &api,
-                active,
-                token.unwrap_or_else(|| {
-                    std::env::var("VAULT_TOKEN")
-                        .expect("VAULT_TOKEN not set")
-                        .into()
-                }),
-            )
-            .await?;
+            step_down(&cli.domain, &api, active, get_token(token)?).await?;
         }
         Commands::WaitUntilReady {} => {
             let api: Api<StatefulSet> = setup_api(&cli.namespace).await?;
@@ -173,22 +171,21 @@ async fn main() -> anyhow::Result<()> {
             if keys.len() == 0 {
                 anyhow::bail!("no unseal keys returned from command")
             }
-            upgrade(
-                &cli.domain,
-                &sts,
-                &pods,
-                token.unwrap_or_else(|| {
-                    std::env::var("VAULT_TOKEN")
-                        .expect("VAULT_TOKEN not set")
-                        .into()
-                }),
-                keys,
-            )
-            .await?;
+
+            upgrade(&cli.domain, &sts, &pods, get_token(token)?, keys).await?;
         }
     }
 
     Ok(())
+}
+
+fn get_token(arg: Option<Secret<String>>) -> anyhow::Result<Secret<String>> {
+    match arg {
+        Some(token) => Ok(token),
+        None => Ok(std::env::var("VAULT_TOKEN")
+            .map_err(|_| anyhow::anyhow!("neither VAULT_TOKEN nor --token specified"))?
+            .into()),
+    }
 }
 
 fn collect_env(
@@ -199,8 +196,12 @@ fn collect_env(
 
     for e in env_pairs {
         let mut split = e.split("=");
-        let k = split.next().unwrap();
-        let v = split.next().unwrap();
+        let k = split
+            .next()
+            .ok_or(anyhow::anyhow!("invalid key=value pair"))?;
+        let v = split
+            .next()
+            .ok_or(anyhow::anyhow!("invalid key=value pair"))?;
         env.insert(k.to_string(), Secret::from(v.to_string()));
     }
 
@@ -210,7 +211,7 @@ fn collect_env(
 fn from_env(env_var_keys: Vec<String>) -> anyhow::Result<HashMap<String, Secret<String>>> {
     let mut env = HashMap::new();
     for key in env_var_keys {
-        let value = std::env::var(&key).expect(&format!("{} not set", key));
+        let value = std::env::var(&key).map_err(|_| anyhow::anyhow!(format!("{} not set", key)))?;
         env.insert(key, Secret::new(value));
     }
     Ok(env)

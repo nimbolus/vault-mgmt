@@ -22,22 +22,37 @@ pub async fn show(api: &Api<Pod>) -> anyhow::Result<()> {
         .list(&ListParams::default().labels("app.kubernetes.io/name=vault"))
         .await?;
 
-    let get_vault_label = |pod: &Pod, label: &str| {
-        pod.metadata
-            .labels
-            .as_ref()
-            .unwrap()
+    let get_vault_label = |pod: &Pod, label: &str| match pod.metadata.labels {
+        Some(ref labels) => labels
             .get(label)
-            .map_or(String::from("unknown"), |s| s.to_string())
+            .unwrap_or(&String::from("unknown"))
+            .to_string(),
+        None => String::from("unknown"),
     };
 
     for p in pods.iter() {
-        let name = p.metadata.name.clone().unwrap();
-        let status = p.status.as_ref().unwrap().phase.clone().unwrap();
-        let image = p.spec.as_ref().unwrap().containers[0]
+        let name = p
+            .metadata
+            .name
+            .clone()
+            .ok_or(anyhow::anyhow!("pod does not have a name"))?;
+        let status = p
+            .status
+            .as_ref()
+            .ok_or(anyhow::anyhow!("pod does not have a status"))?
+            .phase
+            .clone()
+            .ok_or(anyhow::anyhow!("pod does not have a phase"))?;
+        let image = p
+            .spec
+            .as_ref()
+            .ok_or(anyhow::anyhow!("pod does not have a spec"))?
+            .containers
+            .get(0)
+            .ok_or(anyhow::anyhow!("pod does not have a container"))?
             .image
             .clone()
-            .unwrap();
+            .ok_or(anyhow::anyhow!("container does not have an image"))?;
         let initialized = get_vault_label(p, "vault-initialized");
         let initialized = initialized.if_supports_color(Stdout, |text| {
             text.color(match initialized.as_str() {
@@ -65,7 +80,14 @@ pub async fn show(api: &Api<Pod>) -> anyhow::Result<()> {
         let ready = {
             let mut ready = "unknown".to_string();
 
-            for c in p.status.as_ref().unwrap().conditions.as_ref().unwrap() {
+            for c in p
+                .status
+                .as_ref()
+                .ok_or(anyhow::anyhow!("pod does not have a status"))?
+                .conditions
+                .as_ref()
+                .ok_or(anyhow::anyhow!("pod does not have status conditions"))?
+            {
                 if c.type_ == "Ready" {
                     ready = match c.status.as_str() {
                         "True" => "true".to_string(),

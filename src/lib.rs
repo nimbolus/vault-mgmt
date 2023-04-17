@@ -59,7 +59,10 @@ pub async fn exec(
                 .labels(exec_in.to_label_selector()),
         )
         .await?;
-    let pod = pods.items.first().unwrap();
+    let pod = pods
+        .items
+        .first()
+        .ok_or(anyhow::anyhow!("no matching vault pod found"))?;
 
     let (stdout, stderr) = exec_pod(&api, pod, cmd, env).await?;
 
@@ -159,7 +162,7 @@ pub async fn wait_until_running(api: &Api<StatefulSet>, name: String) -> anyhow:
 pub async fn get_unseal_keys(key_cmd: String) -> anyhow::Result<Vec<Secret<String>>> {
     let output = Command::new("sh").arg("-c").arg(key_cmd).output().await?;
 
-    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stdout = String::from_utf8(output.stdout)?;
     let keys = stdout
         .lines()
         .collect::<Vec<_>>()
@@ -188,7 +191,13 @@ pub async fn unseal(domain: &str, api: &Api<Pod>, keys: Vec<Secret<String>>) -> 
     info!("trying {} keys", keys.len());
 
     for pod in pods.iter() {
-        info!("unsealing: {}", pod.metadata.name.clone().unwrap());
+        info!(
+            "unsealing: {}",
+            pod.metadata
+                .name
+                .clone()
+                .ok_or(anyhow::anyhow!("pod does not have a name"))?
+        );
 
         let mut sender = https_forward(domain, api, pod).await?;
 
@@ -260,9 +269,20 @@ pub async fn upgrade(
 
     info!("upgrading standby pods");
     for pod in standby.iter() {
-        wait_until_ready(stss, sts.metadata.name.clone().unwrap()).await?;
+        wait_until_ready(
+            stss,
+            sts.metadata
+                .name
+                .clone()
+                .ok_or(anyhow::anyhow!("statefulset does not have a name"))?,
+        )
+        .await?;
 
-        let name = pod.metadata.name.clone().unwrap();
+        let name = pod
+            .metadata
+            .name
+            .clone()
+            .ok_or(anyhow::anyhow!("pod does not have a name"))?;
         info!("upgrading pod: {}", name);
 
         pods.delete(&name, &DeleteParams::default())
@@ -282,9 +302,20 @@ pub async fn upgrade(
 
     info!("upgrading currently active pods");
     for pod in active.iter() {
-        wait_until_ready(stss, sts.metadata.name.clone().unwrap()).await?;
+        wait_until_ready(
+            stss,
+            sts.metadata
+                .name
+                .clone()
+                .ok_or(anyhow::anyhow!("statefulset does not have a name"))?,
+        )
+        .await?;
 
-        let name = pod.metadata.name.clone().unwrap();
+        let name = pod
+            .metadata
+            .name
+            .clone()
+            .ok_or(anyhow::anyhow!("pod does not have a name"))?;
         info!("upgrading pod: {}", name);
 
         info!("stepping down: {}", name);
@@ -305,12 +336,24 @@ pub async fn upgrade(
         unseal(domain, pods, keys.clone()).await?;
     }
 
-    wait_until_ready(stss, sts.metadata.name.clone().unwrap()).await?;
+    wait_until_ready(
+        stss,
+        sts.metadata
+            .name
+            .clone()
+            .ok_or(anyhow::anyhow!("statefulset does not have a name"))?,
+    )
+    .await?;
 
     Ok(())
 }
 
-#[tracing::instrument(skip_all, fields(pod = %pod.metadata.name.clone().unwrap(), cmd = %cmd, env_vars = ?env.keys()))]
+#[tracing::instrument(
+    skip_all,
+    fields(pod = %pod.metadata.name.clone().ok_or(anyhow::anyhow!("pod does not have a name"))?,
+    cmd = %cmd,
+    env_vars = ?env.keys()),
+)]
 pub async fn exec_pod(
     api: &Api<Pod>,
     pod: &Pod,
@@ -319,13 +362,18 @@ pub async fn exec_pod(
 ) -> anyhow::Result<(String, String)> {
     let mut attached = api
         .exec(
-            &pod.metadata.name.clone().unwrap(),
+            &pod.metadata
+                .name
+                .clone()
+                .ok_or(anyhow::anyhow!("pod does not have a name"))?,
             vec!["sh"],
             &AttachParams::default().stdin(true),
         )
         .await?;
 
-    let mut stdin_writer = attached.stdin().unwrap();
+    let mut stdin_writer = attached
+        .stdin()
+        .ok_or(anyhow::anyhow!("no stdin available"))?;
 
     let mut cmd_with_env_vars = String::new();
     for (k, v) in env {
@@ -336,16 +384,24 @@ pub async fn exec_pod(
 
     stdin_writer.write_all(cmd_with_env_vars.as_bytes()).await?;
 
-    let (stdout, stderr) = get_output(attached).await;
+    let (stdout, stderr) = get_output(attached).await?;
 
     Ok((stdout, stderr))
 }
 
 #[tracing::instrument(skip_all)]
-pub async fn get_output(mut attached: AttachedProcess) -> (String, String) {
-    let stdout = tokio_util::io::ReaderStream::new(attached.stdout().unwrap());
-    let stderr = tokio_util::io::ReaderStream::new(attached.stderr().unwrap());
-    attached.join().await.unwrap();
+pub async fn get_output(mut attached: AttachedProcess) -> anyhow::Result<(String, String)> {
+    let stdout = tokio_util::io::ReaderStream::new(
+        attached
+            .stdout()
+            .ok_or(anyhow::anyhow!("no stdout available"))?,
+    );
+    let stderr = tokio_util::io::ReaderStream::new(
+        attached
+            .stderr()
+            .ok_or(anyhow::anyhow!("no stderr available"))?,
+    );
+    attached.join().await?;
     let out = stdout
         .filter_map(|r| async { r.ok().and_then(|v| String::from_utf8(v.to_vec()).ok()) })
         .collect::<Vec<_>>()
@@ -356,7 +412,7 @@ pub async fn get_output(mut attached: AttachedProcess) -> (String, String) {
         .collect::<Vec<_>>()
         .await
         .join("");
-    (out, err)
+    Ok((out, err))
 }
 
 #[tracing::instrument(skip_all)]
@@ -366,9 +422,18 @@ pub async fn https_forward(
     pod: &Pod,
 ) -> anyhow::Result<hyper::client::conn::SendRequest<Body>> {
     let mut pf = api
-        .portforward(pod.metadata.name.clone().unwrap().as_str(), &[8200])
+        .portforward(
+            pod.metadata
+                .name
+                .clone()
+                .ok_or(anyhow::anyhow!("pod does not have a name"))?
+                .as_str(),
+            &[8200],
+        )
         .await?;
-    let port = pf.take_stream(8200).unwrap();
+    let port = pf
+        .take_stream(8200)
+        .ok_or(anyhow::anyhow!("port 8200 is not available"))?;
 
     let tls = tokio_rustls::rustls::ClientConfig::builder()
         .with_safe_defaults()
