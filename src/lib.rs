@@ -45,7 +45,7 @@ impl ExecIn {
     }
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(skip_all, fields(cmd, exec_in = %exec_in))]
 pub async fn exec(
     api: &Api<Pod>,
     cmd: String,
@@ -72,7 +72,7 @@ pub async fn exec(
     Ok(())
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(skip_all, fields(domain, pod = %pod.metadata.name.as_ref().unwrap()))]
 pub async fn step_down(
     domain: &str,
     api: &Api<Pod>,
@@ -98,6 +98,8 @@ pub async fn step_down(
     if parts.status != hyper::StatusCode::NO_CONTENT {
         return Err(anyhow::anyhow!("{}", body));
     }
+
+    debug!("step down successful");
 
     Ok(())
 }
@@ -415,12 +417,14 @@ pub async fn get_output(mut attached: AttachedProcess) -> anyhow::Result<(String
     Ok((out, err))
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(skip_all, fields(domain, pod = %pod.metadata.name.as_ref().unwrap()))]
 pub async fn https_forward(
-    vault_hostname: &str,
+    domain: &str,
     api: &Api<Pod>,
     pod: &Pod,
 ) -> anyhow::Result<hyper::client::conn::SendRequest<Body>> {
+    trace!("forwarding port to pod");
+
     let mut pf = api
         .portforward(
             pod.metadata
@@ -441,10 +445,7 @@ pub async fn https_forward(
         .with_no_client_auth();
 
     let tls_stream = tokio_rustls::TlsConnector::from(Arc::new(tls))
-        .connect(
-            tokio_rustls::rustls::ServerName::try_from(vault_hostname)?,
-            port,
-        )
+        .connect(tokio_rustls::rustls::ServerName::try_from(domain)?, port)
         .await?;
 
     let (sender, connection) = hyper::client::conn::handshake(tls_stream).await?;
