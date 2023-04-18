@@ -121,11 +121,6 @@ pub async fn wait_until_ready(api: &Api<StatefulSet>, name: String) -> anyhow::R
                         return false;
                     }
                 }
-                if let Some(ready) = status.updated_replicas {
-                    if ready != status.replicas {
-                        return false;
-                    }
-                }
 
                 return true;
             }
