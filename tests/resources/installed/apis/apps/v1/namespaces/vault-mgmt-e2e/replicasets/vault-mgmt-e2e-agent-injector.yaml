@@ -1,0 +1,151 @@
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  annotations:
+    deployment.kubernetes.io/desired-replicas: "1"
+    deployment.kubernetes.io/max-replicas: "2"
+    deployment.kubernetes.io/revision: "1"
+    meta.helm.sh/release-name: vault-mgmt-e2e-2274
+    meta.helm.sh/release-namespace: vault-mgmt-e2e
+  creationTimestamp: "2023-05-04T15:01:49Z"
+  generation: 1
+  labels:
+    app.kubernetes.io/instance: vault-mgmt-e2e-2274
+    app.kubernetes.io/name: vault-agent-injector
+    component: webhook
+    pod-template-hash: 549957b94b
+  name: vault-mgmt-e2e-2274-agent-injector-549957b94b
+  namespace: vault-mgmt-e2e
+  ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: vault-mgmt-e2e-2274-agent-injector
+      uid: bc9eb791-b426-4aa1-969f-6f9d500e63a8
+  resourceVersion: "197457584"
+  uid: 3c56f0de-ea87-4f02-8978-23492e9a77dd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: vault-mgmt-e2e-2274
+      app.kubernetes.io/name: vault-agent-injector
+      component: webhook
+      pod-template-hash: 549957b94b
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app.kubernetes.io/instance: vault-mgmt-e2e-2274
+        app.kubernetes.io/name: vault-agent-injector
+        component: webhook
+        pod-template-hash: 549957b94b
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/instance: vault-mgmt-e2e-2274
+                  app.kubernetes.io/name: vault-agent-injector
+                  component: webhook
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - args:
+            - agent-inject
+            - 2>&1
+          env:
+            - name: AGENT_INJECT_LISTEN
+              value: :8080
+            - name: AGENT_INJECT_LOG_LEVEL
+              value: info
+            - name: AGENT_INJECT_VAULT_ADDR
+              value: http://vault-mgmt-e2e-2274.vault-mgmt-e2e.svc:8200
+            - name: AGENT_INJECT_VAULT_AUTH_PATH
+              value: auth/kubernetes
+            - name: AGENT_INJECT_VAULT_IMAGE
+              value: hashicorp/vault:1.13.1
+            - name: AGENT_INJECT_TLS_AUTO
+              value: vault-mgmt-e2e-2274-agent-injector-cfg
+            - name: AGENT_INJECT_TLS_AUTO_HOSTS
+              value: vault-mgmt-e2e-2274-agent-injector-svc,vault-mgmt-e2e-2274-agent-injector-svc.vault-mgmt-e2e,vault-mgmt-e2e-2274-agent-injector-svc.vault-mgmt-e2e.svc
+            - name: AGENT_INJECT_LOG_FORMAT
+              value: standard
+            - name: AGENT_INJECT_REVOKE_ON_SHUTDOWN
+              value: "false"
+            - name: AGENT_INJECT_CPU_REQUEST
+              value: 250m
+            - name: AGENT_INJECT_CPU_LIMIT
+              value: 500m
+            - name: AGENT_INJECT_MEM_REQUEST
+              value: 64Mi
+            - name: AGENT_INJECT_MEM_LIMIT
+              value: 128Mi
+            - name: AGENT_INJECT_DEFAULT_TEMPLATE
+              value: map
+            - name: AGENT_INJECT_TEMPLATE_CONFIG_EXIT_ON_RETRY_FAILURE
+              value: "true"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+          image: hashicorp/vault-k8s:1.2.1
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 2
+            httpGet:
+              path: /health/ready
+              port: 8080
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 2
+            successThreshold: 1
+            timeoutSeconds: 5
+          name: sidecar-injector
+          readinessProbe:
+            failureThreshold: 2
+            httpGet:
+              path: /health/ready
+              port: 8080
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 2
+            successThreshold: 1
+            timeoutSeconds: 5
+          resources: {}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          startupProbe:
+            failureThreshold: 12
+            httpGet:
+              path: /health/ready
+              port: 8080
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 100
+      serviceAccount: vault-mgmt-e2e-2274-agent-injector
+      serviceAccountName: vault-mgmt-e2e-2274-agent-injector
+      terminationGracePeriodSeconds: 30
+status:
+  availableReplicas: 1
+  fullyLabeledReplicas: 1
+  observedGeneration: 1
+  readyReplicas: 1
+  replicas: 1

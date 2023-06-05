@@ -1,26 +1,24 @@
-// separate file to not include the OwoColorize methods everywhere
-
 use k8s_openapi::api::core::v1::Pod;
-use kube::api::{Api, ListParams};
+use kube::api::Api;
 use owo_colors::{AnsiColors, DynColors, OwoColorize, Stream::Stdout};
 use prettytable::Table;
 
+use crate::list_vault_pods;
+
 #[tracing::instrument(skip_all)]
-pub async fn show(api: &Api<Pod>) -> anyhow::Result<()> {
+pub async fn construct_table(api: &Api<Pod>) -> anyhow::Result<Table> {
     let mut table = Table::new();
     table.add_row(row![
         "NAME".if_supports_color(Stdout, |text| text.bold()),
         "STATUS".if_supports_color(Stdout, |text| text.bold()),
         "IMAGE".if_supports_color(Stdout, |text| text.bold()),
         "INITIALIZED".if_supports_color(Stdout, |text| text.bold()),
-        "ACTIVE".if_supports_color(Stdout, |text| text.bold()),
         "SEALED".if_supports_color(Stdout, |text| text.bold()),
+        "ACTIVE".if_supports_color(Stdout, |text| text.bold()),
         "READY".if_supports_color(Stdout, |text| text.bold()),
     ]);
 
-    let pods = api
-        .list(&ListParams::default().labels("app.kubernetes.io/name=vault"))
-        .await?;
+    let pods = api.list(&list_vault_pods()).await?;
 
     let get_vault_label = |pod: &Pod, label: &str| match pod.metadata.labels {
         Some(ref labels) => labels
@@ -61,19 +59,19 @@ pub async fn show(api: &Api<Pod>) -> anyhow::Result<()> {
                 _ => DynColors::Ansi(AnsiColors::Yellow),
             })
         });
-        let active = get_vault_label(p, "vault-active");
-        let active = active.if_supports_color(Stdout, |text| {
-            text.color(match active.as_str() {
-                "true" => DynColors::Ansi(AnsiColors::Green),
-                "false" => DynColors::Ansi(AnsiColors::White),
-                _ => DynColors::Ansi(AnsiColors::Yellow),
-            })
-        });
         let sealed = get_vault_label(p, "vault-sealed");
         let sealed = sealed.if_supports_color(Stdout, |text| {
             text.color(match sealed.as_str() {
                 "true" => DynColors::Ansi(AnsiColors::Red),
                 "false" => DynColors::Ansi(AnsiColors::Green),
+                _ => DynColors::Ansi(AnsiColors::Yellow),
+            })
+        });
+        let active = get_vault_label(p, "vault-active");
+        let active = active.if_supports_color(Stdout, |text| {
+            text.color(match active.as_str() {
+                "true" => DynColors::Ansi(AnsiColors::Green),
+                "false" => DynColors::Ansi(AnsiColors::White),
                 _ => DynColors::Ansi(AnsiColors::Yellow),
             })
         });
@@ -114,13 +112,11 @@ pub async fn show(api: &Api<Pod>) -> anyhow::Result<()> {
             status,
             image,
             initialized,
-            active,
             sealed,
+            active,
             ready,
         ]);
     }
 
-    table.printstd();
-
-    Ok(())
+    Ok(table)
 }

@@ -1,0 +1,35 @@
+server:
+  affinity: ""
+  ha:
+    enabled: true
+    raft:
+      enabled: true
+      config: |
+        ui = true
+
+        log_requests_level = "trace"
+
+        listener "tcp" {
+          tls_disable = 1
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+        }
+
+        storage "raft" {
+          path = "/vault/data"
+
+          retry_join {
+            auto_join = "provider=k8s label_selector=\"app.kubernetes.io/name=vault,component=server,app.kubernetes.io/instance={{ .Release.Name }}\" namespace=\"{{ .Release.Namespace }}\""
+            auto_join_scheme = "http"
+          }
+        }
+
+        service_registration "kubernetes" {}
+  dataStorage:
+    enabled: false
+  volumes:
+    - name: data
+      emptyDir: {}
+  volumeMounts:
+    - name: data
+      mountPath: /vault/data

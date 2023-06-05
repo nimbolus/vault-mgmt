@@ -1,17 +1,16 @@
 use clap::builder::TypedValueParser;
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 use k8s_openapi::api::apps::v1::StatefulSet;
-use kube::{
-    api::{Api, ListParams},
-    core::ObjectMeta,
-    Client,
-};
+use kube::{api::Api, core::ObjectMeta, Client};
 use secrecy::Secret;
 use std::collections::HashMap;
 use std::str::FromStr;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
 
-use vault_mgmt::*;
+use vault_mgmt::{
+    construct_table, is_statefulset_ready, StepDown, VAULT_PORT, {self, exec, ExecIn},
+    {get_unseal_keys, list_sealed_pods, Unseal}, {list_vault_pods, PodApi, StatefulSetApi},
+};
 
 /// Manage your vault installation in Kubernetes
 #[derive(Parser, Debug)]
@@ -32,8 +31,21 @@ struct Cli {
     )]
     log_level: tracing::Level,
 
+    /// Statefulset name
+    #[arg(long, default_value = "vault")]
+    statefulset: String,
+
     /// Vault domain name, used for TLS verification
+    #[arg(long, default_value = "vault")]
     domain: String,
+
+    /// Use TLS for communication with vault
+    #[arg(long, action = ArgAction::Set, default_value = "true")]
+    tls: bool,
+
+    /// Verify TLS certificate
+    #[arg(long, action = ArgAction::Set, default_value = "true")]
+    tls_verify: bool,
 
     /// Subcommand to run
     #[command(subcommand)]
@@ -115,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(format!("vault_mgmt={}", cli.log_level.to_string())));
+        .unwrap_or_else(|_| EnvFilter::new(format!("vault_mgmt={}", cli.log_level)));
     tracing::subscriber::set_global_default(
         Registry::default()
             .with(env_filter)
@@ -125,7 +137,9 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Show {} => {
             let api = setup_api(&cli.namespace).await?;
-            show(&api).await?;
+            let table = construct_table(&api).await?;
+
+            table.printstd();
         }
         Commands::Exec {
             cmd,
@@ -140,39 +154,85 @@ async fn main() -> anyhow::Result<()> {
         Commands::StepDown { token } => {
             let api = setup_api(&cli.namespace).await?;
             let active = api
-                .list(
-                    &ListParams::default()
-                        .labels("app.kubernetes.io/name=vault")
-                        .labels(ExecIn::Active.to_label_selector()),
-                )
+                .list(&list_vault_pods().labels(&ExecIn::Active.to_label_selector()))
                 .await?;
             let active = active.iter().next().ok_or(anyhow::anyhow!(
                 "no active vault pod found. is vault sealed?"
             ))?;
 
-            step_down(&cli.domain, &api, active, get_token(token)?).await?;
+            PodApi::new(api, cli.tls, cli.domain)
+                .http(
+                    active
+                        .metadata
+                        .name
+                        .as_ref()
+                        .ok_or(anyhow::anyhow!("pod does not have a name"))?
+                        .as_str(),
+                    VAULT_PORT,
+                )
+                .await?
+                .step_down(get_token(token)?)
+                .await?;
         }
         Commands::WaitUntilReady {} => {
             let api: Api<StatefulSet> = setup_api(&cli.namespace).await?;
-            wait_until_ready(&api, "vault".to_owned()).await?;
+            kube::runtime::wait::await_condition(
+                api.clone(),
+                &cli.statefulset,
+                is_statefulset_ready(),
+            )
+            .await?;
         }
         Commands::Unseal { key_cmd } => {
             let api = setup_api(&cli.namespace).await?;
             let keys = get_unseal_keys(key_cmd.join(" ")).await?;
-            if keys.len() == 0 {
-                anyhow::bail!("no unseal keys returned from command")
-            }
-            unseal(&cli.domain, &api, keys).await?;
-        }
-        Commands::Upgrade { token, key_cmd } => {
-            let sts = setup_api(&cli.namespace).await?;
-            let pods = setup_api(&cli.namespace).await?;
-            let keys = get_unseal_keys(key_cmd.join(" ")).await?;
-            if keys.len() == 0 {
+            if keys.is_empty() {
                 anyhow::bail!("no unseal keys returned from command")
             }
 
-            upgrade(&cli.domain, &sts, &pods, get_token(token)?, keys).await?;
+            for pod in list_sealed_pods(&api).await?.iter() {
+                PodApi::new(api.clone(), cli.tls, cli.domain.clone())
+                    .http(
+                        pod.metadata
+                            .name
+                            .as_ref()
+                            .ok_or(anyhow::anyhow!("pod does not have a name"))?
+                            .as_str(),
+                        VAULT_PORT,
+                    )
+                    .await?
+                    .unseal(&keys)
+                    .await?;
+            }
+        }
+        Commands::Upgrade { token, key_cmd } => {
+            let stss = setup_api(&cli.namespace).await?;
+            let pods = setup_api(&cli.namespace).await?;
+            let keys = get_unseal_keys(key_cmd.join(" ")).await?;
+            if keys.is_empty() {
+                anyhow::bail!("no unseal keys returned from command")
+            }
+
+            let sts = stss.get(&cli.statefulset).await?;
+
+            StatefulSetApi::from(stss.clone())
+                .upgrade(
+                    sts.clone(),
+                    &PodApi::new(pods.clone(), cli.tls, cli.domain),
+                    get_token(token)?,
+                    &keys,
+                )
+                .await?;
+
+            kube::runtime::wait::await_condition(
+                stss.clone(),
+                &sts.metadata
+                    .name
+                    .clone()
+                    .ok_or(anyhow::anyhow!("statefulset does not have a name"))?,
+                is_statefulset_ready(),
+            )
+            .await?;
         }
     }
 
@@ -195,7 +255,7 @@ fn collect_env(
     let mut env = from_env(env_var_keys)?;
 
     for e in env_pairs {
-        let mut split = e.split("=");
+        let mut split = e.split('=');
         let k = split
             .next()
             .ok_or(anyhow::anyhow!("invalid key=value pair"))?;

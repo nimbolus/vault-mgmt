@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    meta.helm.sh/release-name: vault-mgmt-e2e-2274
+    meta.helm.sh/release-namespace: vault-mgmt-e2e
+  creationTimestamp: "2023-05-04T15:01:49Z"
+  labels:
+    app.kubernetes.io/instance: vault-mgmt-e2e-2274
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: vault
+    helm.sh/chart: vault-0.24.1
+    vault-active: "true"
+  name: vault-mgmt-e2e-2274-active
+  namespace: vault-mgmt-e2e
+  resourceVersion: "197457446"
+  uid: 2ed013e8-c00b-410f-8e27-924178650029
+spec:
+  clusterIP: 10.43.117.207
+  clusterIPs:
+    - 10.43.117.207
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+    - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+    - name: http
+      port: 8200
+      protocol: TCP
+      targetPort: 8200
+    - name: https-internal
+      port: 8201
+      protocol: TCP
+      targetPort: 8201
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/instance: vault-mgmt-e2e-2274
+    app.kubernetes.io/name: vault
+    component: server
+    vault-active: "true"
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}
