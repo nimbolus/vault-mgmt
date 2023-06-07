@@ -4,6 +4,12 @@
 + Vault is running in Kubernetes.
 + [Service Registration](https://developer.hashicorp.com/vault/docs/configuration/service-registration/kubernetes) is configured
 
+## Features
++ Unseal a Vault Pod.
++ Step-down the active Pod.
++ Upgrade a single Pod.
++ Upgrade the full cluster without downtime.
+
 ## Testing
 Unit tests can be run normally by cargo: `cargo test`.
 
