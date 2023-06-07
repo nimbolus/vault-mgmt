@@ -115,6 +115,11 @@ enum Commands {
         #[arg(short, long)]
         token: Option<Secret<String>>,
 
+        /// Unseal the pods after upgrading.
+        /// If this is set to false, the upgrade process will wait for the pods to be unsealed externally.
+        #[arg(short = 'u', long, action = ArgAction::Set, default_value = "true")]
+        should_unseal: bool,
+
         /// command that writes unseal keys to its stdout.
         /// each line will be used as a key.
         /// the command will be executed locally
@@ -205,7 +210,11 @@ async fn main() -> anyhow::Result<()> {
                     .await?;
             }
         }
-        Commands::Upgrade { token, key_cmd } => {
+        Commands::Upgrade {
+            token,
+            should_unseal,
+            key_cmd,
+        } => {
             let stss = setup_api(&cli.namespace).await?;
             let pods = setup_api(&cli.namespace).await?;
             let keys = get_unseal_keys(key_cmd.join(" ")).await?;
@@ -220,6 +229,7 @@ async fn main() -> anyhow::Result<()> {
                     sts.clone(),
                     &PodApi::new(pods.clone(), cli.tls, cli.domain),
                     get_token(token)?,
+                    should_unseal,
                     &keys,
                 )
                 .await?;

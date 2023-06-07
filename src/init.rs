@@ -36,7 +36,7 @@ impl Default for InitRequest {
     }
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Deserialize)]
 pub struct InitResult {
     pub keys: Vec<Secret<String>>,
     pub keys_base64: Vec<Secret<String>>,

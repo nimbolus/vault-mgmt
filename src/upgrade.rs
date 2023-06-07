@@ -32,6 +32,7 @@ impl PodApi {
         pod: Pod,
         target: &VaultVersion,
         token: Secret<String>,
+        should_unseal: bool,
         keys: &[Secret<String>],
     ) -> anyhow::Result<()> {
         let name = pod
@@ -83,9 +84,12 @@ impl PodApi {
         if Self::is_current(&pod, target)? {
             // Pod is sealed
             if is_sealed(&pod)? {
-                // Unseal pod
-
-                pf.unseal(keys).await?;
+                if should_unseal {
+                    // Unseal pod
+                    pf.unseal(keys).await?;
+                } else {
+                    info!("pod {} is sealed, waiting for external unseal", name);
+                }
             }
             // Wait for pod to be unsealed
             kube::runtime::wait::await_condition(self.api.clone(), name, is_pod_unsealed()).await?;
@@ -128,6 +132,7 @@ impl StatefulSetApi {
         sts: StatefulSet,
         pods: &PodApi,
         token: Secret<String>,
+        should_unseal: bool,
         keys: &[Secret<String>],
     ) -> anyhow::Result<()> {
         let target = VaultVersion::try_from(&sts)?;
@@ -154,13 +159,13 @@ impl StatefulSetApi {
 
         info!("upgrading standby pods");
         for pod in standby.iter() {
-            pods.upgrade(pod.clone(), &target, token.clone(), keys)
+            pods.upgrade(pod.clone(), &target, token.clone(), should_unseal, keys)
                 .await?;
         }
 
         info!("upgrading active pods");
         for pod in active.iter() {
-            pods.upgrade(pod.clone(), &target, token.clone(), keys)
+            pods.upgrade(pod.clone(), &target, token.clone(), should_unseal, keys)
                 .await?;
         }
 

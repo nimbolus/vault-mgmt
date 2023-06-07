@@ -82,13 +82,18 @@ pub fn is_pod_ready() -> impl Condition<Pod> {
 /// This is determined by looking at the `vault-sealed` label.
 #[must_use]
 pub fn is_pod_unsealed() -> impl Condition<Pod> {
+    Condition::not(is_pod_sealed())
+}
+
+/// Returns true if the Pod is sealed.
+/// This is determined by looking at the `vault-sealed` label.
+#[must_use]
+pub fn is_pod_sealed() -> impl Condition<Pod> {
     |obj: Option<&Pod>| {
         if let Some(pod) = &obj {
             if let Some(labels) = &pod.metadata.labels {
                 if let Some(sealed) = labels.get("vault-sealed") {
-                    if sealed.as_str() == "false" {
-                        return true;
-                    }
+                    return sealed.as_str() == "true";
                 }
             }
         }
@@ -104,9 +109,7 @@ pub fn is_pod_active() -> impl Condition<Pod> {
         if let Some(pod) = &obj {
             if let Some(labels) = &pod.metadata.labels {
                 if let Some(active) = labels.get("vault-active") {
-                    if active.as_str() == "true" {
-                        return true;
-                    }
+                    return active.as_str() == "true";
                 }
             }
         }

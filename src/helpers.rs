@@ -28,6 +28,7 @@ pub fn is_sealed(pod: &Pod) -> anyhow::Result<bool> {
 }
 
 /// Wrapper around the kube::Api type for the Vault pod
+#[derive(Clone)]
 pub struct PodApi {
     pub api: Api<Pod>,
     tls: bool,
