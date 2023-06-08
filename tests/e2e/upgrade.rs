@@ -64,6 +64,67 @@ async fn upgrade_pod_succeeds_if_already_current() {
         &VaultVersion::try_from(&sts).unwrap(),
         init.root_token,
         true,
+        false,
+        &init.keys,
+    )
+    .await
+    .unwrap();
+
+    helm::uninstall_chart(namespace, &name).await.unwrap();
+}
+
+#[ignore = "needs a running kubernetes cluster and the helm cli"]
+#[tokio::test]
+async fn upgrade_pod_succeeds_if_already_current_with_force_upgrade() {
+    let client = Client::try_default().await.unwrap();
+
+    let namespace = &get_namespace();
+
+    let suffix = rand::random::<u16>();
+    let name = format!("vault-mgmt-e2e-{}", suffix);
+    dbg!(&name);
+
+    let version = "1.13.0";
+
+    helm::add_repo().await.unwrap();
+    helm::install_chart(namespace, &name, Some(&version))
+        .await
+        .unwrap();
+
+    let pods = Api::namespaced(client.clone(), namespace);
+    let stss = Api::namespaced(Client::try_default().await.unwrap(), namespace);
+
+    let init = prepare::init_unseal_cluster(&pods, &stss, &name)
+        .await
+        .unwrap();
+
+    dbg!(
+        &init
+            .keys
+            .iter()
+            .map(|k| k.expose_secret())
+            .collect::<Vec<_>>(),
+        &init.root_token.expose_secret()
+    );
+
+    let pods = PodApi::new(pods, false, "".to_string());
+
+    let mut pf = pods.http(&format!("{}-0", name), VAULT_PORT).await.unwrap();
+
+    pf.await_raft_configuration(init.root_token.clone(), raft_configuration_all_voters())
+        .await
+        .unwrap();
+
+    let sts = stss.get(&name).await.unwrap();
+
+    let pod = pods.api.get(&format!("{}-1", name)).await.unwrap();
+
+    pods.upgrade(
+        pod,
+        &VaultVersion::try_from(&sts).unwrap(),
+        init.root_token,
+        true,
+        true,
         &init.keys,
     )
     .await
@@ -154,6 +215,7 @@ async fn upgrade_pod_succeeds_if_outdated_and_standby() {
         &VaultVersion::try_from(&sts).unwrap(),
         init.root_token,
         true,
+        false,
         &init.keys,
     )
     .await
@@ -250,6 +312,7 @@ async fn upgrade_pod_succeeds_if_outdated_and_active() {
         &VaultVersion::try_from(&sts).unwrap(),
         init.root_token,
         true,
+        false,
         &init.keys,
     )
     .await
@@ -347,6 +410,7 @@ async fn upgrade_pod_succeeds_fails_with_missing_external_unseal() {
             pod,
             &VaultVersion::try_from(&sts).unwrap(),
             init.root_token,
+            false,
             false,
             &init.keys,
         ),
@@ -468,6 +532,7 @@ async fn upgrade_pod_succeeds_succeeds_with_external_unseal() {
         pod,
         &VaultVersion::try_from(&sts).unwrap(),
         init.root_token,
+        false,
         false,
         &vec![],
     )

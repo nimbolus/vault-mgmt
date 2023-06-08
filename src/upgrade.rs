@@ -33,6 +33,7 @@ impl PodApi {
         target: &VaultVersion,
         token: Secret<String>,
         should_unseal: bool,
+        force_upgrade: bool,
         keys: &[Secret<String>],
     ) -> anyhow::Result<()> {
         let name = pod
@@ -41,8 +42,8 @@ impl PodApi {
             .as_ref()
             .ok_or(anyhow::anyhow!("pod does not have a name"))?;
 
-        // if Pod version is outdated
-        if !Self::is_current(&pod, target)? {
+        // if Pod version is outdated (or upgrade is forced)
+        if !Self::is_current(&pod, target)? || force_upgrade {
             // if Pod is active
             if pod
                 .metadata
@@ -133,6 +134,7 @@ impl StatefulSetApi {
         pods: &PodApi,
         token: Secret<String>,
         should_unseal: bool,
+        force_upgrade: bool,
         keys: &[Secret<String>],
     ) -> anyhow::Result<()> {
         let target = VaultVersion::try_from(&sts)?;
@@ -159,14 +161,28 @@ impl StatefulSetApi {
 
         info!("upgrading standby pods");
         for pod in standby.iter() {
-            pods.upgrade(pod.clone(), &target, token.clone(), should_unseal, keys)
-                .await?;
+            pods.upgrade(
+                pod.clone(),
+                &target,
+                token.clone(),
+                should_unseal,
+                force_upgrade,
+                keys,
+            )
+            .await?;
         }
 
         info!("upgrading active pods");
         for pod in active.iter() {
-            pods.upgrade(pod.clone(), &target, token.clone(), should_unseal, keys)
-                .await?;
+            pods.upgrade(
+                pod.clone(),
+                &target,
+                token.clone(),
+                should_unseal,
+                force_upgrade,
+                keys,
+            )
+            .await?;
         }
 
         Ok(())
@@ -175,7 +191,17 @@ impl StatefulSetApi {
 
 #[cfg(test)]
 mod tests {
-    use k8s_openapi::api::core::v1::Pod;
+    use std::str::FromStr;
+
+    use http::{Request, Response, StatusCode};
+    use hyper::Body;
+    use k8s_openapi::{api::core::v1::Pod, List};
+    use kube::{Api, Client};
+    use secrecy::Secret;
+    use serde_yaml::Value;
+    use tokio::task::JoinHandle;
+    use tokio_util::sync::CancellationToken;
+    use tower_test::mock::{self, Handle};
 
     use crate::{PodApi, VaultVersion};
 
@@ -231,5 +257,150 @@ mod tests {
         };
 
         assert!(!PodApi::is_current(&pod, &target).unwrap());
+    }
+
+    async fn mock_list_sealed(
+        cancel: CancellationToken,
+        handle: &mut Handle<Request<Body>, Response<Body>>,
+    ) -> bool {
+        let mut delete_called = false;
+        loop {
+            tokio::select! {
+                request = handle.next_request() => {
+                    let (request, send) = request.expect("Service not called");
+
+                    let method = request.method().to_string();
+                    let uri = request.uri().path().to_string();
+                    let query = request.uri().query().unwrap_or_default().to_string();
+
+                    let watch = query.contains("watch=true");
+
+                    println!("{} {} {} ", method, uri, query);
+
+                    let body = match (method.as_str(), uri.as_str(), query.as_str(), watch) {
+                        ("GET", "/api/v1/namespaces/vault-mgmt-e2e/pods", "&fieldSelector=metadata.name%3Dvault-mgmt-e2e-2274-1&resourceVersion=0", false) => {
+                            let mut pod: Pod = serde_yaml::from_str(
+                                &tokio::fs::read_to_string(format!(
+                                    "tests/resources/installed/{}{}.yaml",
+                                    "api/v1/namespaces/vault-mgmt-e2e/pods/vault-mgmt-e2e-2274-",
+                                    1
+                                ))
+                                .await
+                                .unwrap()
+                            ).unwrap();
+
+                            pod.metadata
+                                .labels
+                                .as_mut()
+                                .unwrap()
+                                .entry("vault-sealed".to_string())
+                                .and_modify(|x| *x = "false".to_string());
+
+                            let mut list = List::<Pod>::default();
+                            list.items.push(pod);
+                            list.metadata.resource_version = Some("0".to_string());
+                            serde_json::to_string(&list).unwrap()
+                        }
+                        ("GET", "/api/v1/namespaces/vault-mgmt-e2e/pods/vault-mgmt-e2e-2274-1", _, _) => {
+                            let file =
+                                tokio::fs::read_to_string(format!(
+                                    "tests/resources/installed/{}.yaml",
+                                    "api/v1/namespaces/vault-mgmt-e2e/pods/vault-mgmt-e2e-2274-1"
+                                ))
+                                .await
+                                .unwrap();
+
+                            serde_json::to_string(&serde_yaml::from_str::<Value>(&file).unwrap()).unwrap()
+                        }
+                        (method, _, _, _) => {
+                            if method == "DELETE" {
+                                delete_called = true;
+                            }
+                            send.send_response(Response::builder().status(StatusCode::NOT_FOUND).body(Body::from("404 not found")).unwrap());
+                            continue;
+                        },
+                    };
+
+                    send.send_response(Response::builder().body(Body::from(body)).unwrap());
+                }
+                _ = cancel.cancelled() => {
+                    return delete_called;
+                }
+            }
+        }
+    }
+
+    async fn setup() -> (Api<Pod>, JoinHandle<bool>, CancellationToken) {
+        let (mock_service, mut handle) = mock::pair::<Request<Body>, Response<Body>>();
+
+        let cancel = CancellationToken::new();
+        let cloned_token = cancel.clone();
+
+        let spawned =
+            tokio::spawn(async move { mock_list_sealed(cloned_token, &mut handle).await });
+
+        let pods: Api<Pod> = Api::default_namespaced(Client::new(mock_service, "vault-mgmt-e2e"));
+
+        (pods, spawned, cancel)
+    }
+
+    #[tokio::test]
+    async fn upgrade_does_not_delete_pod_if_current() {
+        let target = VaultVersion {
+            version: "1.13.0".to_string(),
+        };
+
+        let (api, service, cancel) = setup().await;
+
+        let pods = PodApi::new(api, false, "vault-mgmt-e2e".to_string());
+
+        let pod = pods.api.get("vault-mgmt-e2e-2274-1").await.unwrap();
+
+        pods.upgrade(
+            pod,
+            &target,
+            Secret::from_str("token").unwrap(),
+            false,
+            false,
+            &[],
+        )
+        .await
+        .unwrap_err();
+
+        cancel.cancel();
+
+        let delete_called = service.await.unwrap();
+
+        assert!(!delete_called);
+    }
+
+    #[tokio::test]
+    async fn upgrade_does_delete_pod_if_current_and_force_upgrade() {
+        let target = VaultVersion {
+            version: "1.13.0".to_string(),
+        };
+
+        let (api, service, cancel) = setup().await;
+
+        let pods = PodApi::new(api, false, "vault-mgmt-e2e".to_string());
+
+        let pod = pods.api.get("vault-mgmt-e2e-2274-1").await.unwrap();
+
+        pods.upgrade(
+            pod,
+            &target,
+            Secret::from_str("token").unwrap(),
+            false,
+            true,
+            &[],
+        )
+        .await
+        .unwrap_err();
+
+        cancel.cancel();
+
+        let delete_called = service.await.unwrap();
+
+        assert!(delete_called);
     }
 }

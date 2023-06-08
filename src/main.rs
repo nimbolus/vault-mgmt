@@ -120,6 +120,12 @@ enum Commands {
         #[arg(short = 'u', long, action = ArgAction::Set, default_value = "true")]
         should_unseal: bool,
 
+        /// Force upgrading the pods even when the version is already updated.
+        /// If this is not enabled, every upgraded pod will be skipped.
+        /// This is useful when you want to roll the pods gracefully for other reasons (e.g. certificate rotation).
+        #[arg(short, long, action = ArgAction::Set, default_value = "false")]
+        force_upgrade: bool,
+
         /// command that writes unseal keys to its stdout.
         /// each line will be used as a key.
         /// the command will be executed locally
@@ -213,6 +219,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Upgrade {
             token,
             should_unseal,
+            force_upgrade,
             key_cmd,
         } => {
             let stss = setup_api(&cli.namespace).await?;
@@ -230,6 +237,7 @@ async fn main() -> anyhow::Result<()> {
                     &PodApi::new(pods.clone(), cli.tls, cli.domain),
                     get_token(token)?,
                     should_unseal,
+                    force_upgrade,
                     &keys,
                 )
                 .await?;
