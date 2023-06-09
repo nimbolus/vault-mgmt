@@ -1,3 +1,4 @@
+use http::uri::Scheme;
 use hyper::Body;
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::Api;
@@ -5,12 +6,13 @@ use secrecy::{ExposeSecret, Secret};
 use tokio::process::Command;
 
 use crate::{
-    list_vault_pods, ExecIn, {unseal_request, HttpRequest},
+    get_unseal_keys_request, list_vault_pods, ExecIn, HttpForwarderService,
+    {unseal_request, HttpRequest},
 };
 
 /// Get the unseal keys by running the specified command
 #[tracing::instrument()]
-pub async fn get_unseal_keys(key_cmd: String) -> anyhow::Result<Vec<Secret<String>>> {
+pub async fn get_unseal_keys(key_cmd: &str) -> anyhow::Result<Vec<Secret<String>>> {
     let output = Command::new("sh").arg("-c").arg(key_cmd).output().await?;
 
     let stdout = String::from_utf8(output.stdout)?;
@@ -75,6 +77,135 @@ where
     }
 }
 
+/// Get the unseal keys from a Vault secret
+#[async_trait::async_trait]
+pub trait GetUnsealKeys {
+    /// Get the unseal keys from a Vault secret
+    async fn get_unseal_keys(
+        &mut self,
+        path: &http::uri::PathAndQuery,
+        token: Secret<String>,
+    ) -> anyhow::Result<Vec<Secret<String>>>;
+}
+
+#[async_trait::async_trait]
+impl<T> GetUnsealKeys for T
+where
+    T: HttpRequest + Send + Sync + 'static,
+{
+    async fn get_unseal_keys(
+        &mut self,
+        path: &http::uri::PathAndQuery,
+        token: Secret<String>,
+    ) -> anyhow::Result<Vec<Secret<String>>> {
+        let req = get_unseal_keys_request(path.as_str(), token)?;
+
+        let (parts, body) = self.send_request(req).await?.into_parts();
+
+        let body = hyper::body::to_bytes(body).await?;
+        let body = String::from_utf8(body.to_vec())?;
+
+        if !(parts.status.is_success()) {
+            return Err(anyhow::anyhow!("retrieving unseal keys: {}", body));
+        }
+
+        let response: vault_kvget::Response = serde_json::from_str(&body)?;
+
+        Ok(response.keys())
+    }
+}
+
+pub struct GetUnsealKeysFromVault {
+    scheme: http::uri::Scheme,
+    authority: http::uri::Authority,
+}
+
+impl GetUnsealKeysFromVault {
+    pub fn new(uri: &http::Uri) -> anyhow::Result<Self> {
+        Ok(Self {
+            scheme: uri
+                .scheme()
+                .unwrap_or_else(|| match uri.port_u16() {
+                    Some(443) => &Scheme::HTTPS,
+                    _ => &Scheme::HTTP,
+                })
+                .clone(),
+            authority: uri
+                .authority()
+                .ok_or(anyhow::anyhow!(
+                    "keys secret uri does not include an authority"
+                ))?
+                .clone(),
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl GetUnsealKeys for GetUnsealKeysFromVault {
+    async fn get_unseal_keys(
+        &mut self,
+        path: &http::uri::PathAndQuery,
+        token: Secret<String>,
+    ) -> anyhow::Result<Vec<Secret<String>>> {
+        let stream = tokio::net::TcpStream::connect((
+            self.authority.host(),
+            self.authority
+                .port_u16()
+                .unwrap_or_else(|| match self.scheme.as_str() {
+                    "https" => 443,
+                    _ => 80,
+                }),
+        ))
+        .await
+        .unwrap();
+
+        let mut client = match self.scheme.as_str() {
+            "https" => HttpForwarderService::https(self.authority.host(), stream)
+                .await
+                .unwrap(),
+            "http" => HttpForwarderService::http(stream).await.unwrap(),
+            _ => {
+                anyhow::bail!("unsupported scheme {}", self.scheme.as_str())
+            }
+        };
+
+        client.get_unseal_keys(path, token).await
+    }
+}
+
+mod vault_kvget {
+    use secrecy::Secret;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize, Serialize, Debug)]
+    pub struct Response {
+        data: DataMetadata,
+    }
+
+    impl Response {
+        pub fn keys(&self) -> Vec<Secret<String>> {
+            self.data
+                .data
+                .keys
+                .lines()
+                .collect::<Vec<_>>()
+                .iter()
+                .map(|k| Secret::new(k.to_string()))
+                .collect()
+        }
+    }
+
+    #[derive(Deserialize, Serialize, Debug)]
+    struct DataMetadata {
+        data: Data,
+    }
+
+    #[derive(Deserialize, Serialize, Debug)]
+    struct Data {
+        keys: String,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -92,7 +223,9 @@ mod tests {
         Mock, MockServer, ResponseTemplate,
     };
 
-    use crate::{list_sealed_pods, HttpForwarderService, Unseal};
+    use crate::{
+        list_sealed_pods, GetUnsealKeys, GetUnsealKeysFromVault, HttpForwarderService, Unseal,
+    };
 
     async fn mock_list_sealed(
         cancel: CancellationToken,
@@ -233,6 +366,95 @@ mod tests {
                 Secret::from_str("def").unwrap(),
                 Secret::from_str("ghi").unwrap(),
             ])
+            .await;
+
+        assert!(outcome.is_ok());
+    }
+
+    async fn mock_get_unseal_keys() -> MockServer {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method(Method::GET))
+            .and(path("/v1/kv/data/test"))
+            .and(header("X-Vault-Request", "true"))
+            .and(header("X-Vault-Token", "token"))
+            .respond_with(
+                ResponseTemplate::new(StatusCode::OK).set_body_json(serde_json::json!({
+                    "request_id": "abd3b7a3-581f-8add-1a6d-1d7cdb5b9c2b",
+                    "lease_id": "",
+                    "lease_duration": 0,
+                    "renewable": false,
+                    "data": {
+                        "data": {
+                            "keys": "abc\ndef\nghi"
+                        },
+                        "metadata": {
+                            "created_time": "2023-06-09T13:59:44.750984296Z",
+                            "custom_metadata": null,
+                            "deletion_time": "",
+                            "destroyed": false,
+                            "version": 1
+                        }
+                    },
+                    "warnings": null
+                })),
+            )
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        mock_server
+    }
+
+    #[tokio::test]
+    async fn retrieving_unseal_keys_works() {
+        let mock_server = mock_get_unseal_keys().await;
+
+        let uri = http::uri::Uri::builder()
+            .scheme(http::uri::Scheme::HTTP)
+            .authority(mock_server.uri().strip_prefix("http://").unwrap())
+            .path_and_query("/v1/kv/data/test")
+            .build()
+            .unwrap();
+
+        let mut client = HttpForwarderService::http(
+            tokio::net::TcpStream::connect(uri.authority().unwrap().as_str())
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let outcome = client
+            .get_unseal_keys(
+                &uri.path_and_query().unwrap(),
+                Secret::new("token".to_string()),
+            )
+            .await;
+
+        assert!(outcome.is_ok());
+    }
+
+    #[tokio::test]
+    async fn retrieving_unseal_keys_works_externally() {
+        let mock_server = mock_get_unseal_keys().await;
+
+        let uri = http::uri::Uri::builder()
+            .scheme(http::uri::Scheme::HTTP)
+            .authority(mock_server.uri().strip_prefix("http://").unwrap())
+            .path_and_query("/v1/kv/data/test")
+            .build()
+            .unwrap();
+
+        dbg!(mock_server.uri());
+
+        let mut client = GetUnsealKeysFromVault::new(&uri).unwrap();
+
+        let outcome = client
+            .get_unseal_keys(
+                &uri.path_and_query().unwrap(),
+                Secret::new("token".to_string()),
+            )
             .await;
 
         assert!(outcome.is_ok());

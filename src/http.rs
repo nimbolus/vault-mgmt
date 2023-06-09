@@ -111,6 +111,16 @@ pub(crate) fn unseal_request(body: hyper::Body) -> http::Result<Request<Body>> {
         .body(body)
 }
 
+pub(crate) fn get_unseal_keys_request(
+    path: &str,
+    token: Secret<String>,
+) -> http::Result<Request<Body>> {
+    vault_request_with_token(token)
+        .uri(path)
+        .method(hyper::Method::GET)
+        .body(hyper::Body::empty())
+}
+
 const INIT_URL: &str = "/v1/sys/init";
 pub(crate) fn init_request(body: hyper::Body) -> http::Result<Request<Body>> {
     vault_request()

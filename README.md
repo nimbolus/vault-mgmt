@@ -6,6 +6,8 @@
 
 ## Features
 + Unseal a Vault Pod.
+  + Either supply a command that returns the unseal keys
+  + or let the program retrieve the keys from a Vault secret.
 + Step-down the active Pod.
 + Upgrade a single Pod.
 + Upgrade the full cluster without downtime.

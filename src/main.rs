@@ -6,6 +6,7 @@ use secrecy::Secret;
 use std::collections::HashMap;
 use std::str::FromStr;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
+use vault_mgmt::{GetUnsealKeys, GetUnsealKeysFromVault};
 
 use vault_mgmt::{
     construct_table, is_statefulset_ready, StepDown, VAULT_PORT, {self, exec, ExecIn},
@@ -86,10 +87,22 @@ enum Commands {
     /// Unseal all sealed pods
     #[command(arg_required_else_help = true)]
     Unseal {
+        /// vault token to use for retrieving the unseal keys
+        /// if not provided, the token will be read from the VAULT_TOKEN environment variable
+        #[arg(short, long)]
+        token: Option<Secret<String>>,
+
+        /// uri to vault kv secret containing the unseal keys.
+        /// for example: `https://vault.example.com/v1/secret/data/vault/unseal-keys`.
+        /// the secret must store the keys separated by newlines in the data field `keys`.
+        #[arg(long)]
+        keys_secret_uri: Option<String>,
+
         /// command that writes unseal keys to its stdout.
         /// each line will be used as a key.
         /// the command will be executed locally
-        key_cmd: Vec<String>,
+        #[arg(long)]
+        key_cmd: Option<String>,
     },
 
     /// Step down the active pod
@@ -110,7 +123,7 @@ enum Commands {
     /// After a standby pod having taken over, the previously active pod is upgraded.
     #[command(arg_required_else_help = true)]
     Upgrade {
-        /// vault token to use for the step down
+        /// vault token to use for the step down (and retrieving the unseal keys if configured)
         /// if not provided, the token will be read from the VAULT_TOKEN environment variable
         #[arg(short, long)]
         token: Option<Secret<String>>,
@@ -126,10 +139,17 @@ enum Commands {
         #[arg(short, long, action = ArgAction::Set, default_value = "false")]
         force_upgrade: bool,
 
+        /// uri to vault kv secret containing the unseal keys.
+        /// for example: `https://vault.example.com/v1/secret/data/vault/unseal-keys`.
+        /// the secret must store the keys separated by newlines in the data field `keys`.
+        #[arg(long)]
+        keys_secret_uri: Option<String>,
+
         /// command that writes unseal keys to its stdout.
         /// each line will be used as a key.
         /// the command will be executed locally
-        key_cmd: Vec<String>,
+        #[arg(long)]
+        key_cmd: Option<String>,
     },
 }
 
@@ -194,14 +214,49 @@ async fn main() -> anyhow::Result<()> {
             )
             .await?;
         }
-        Commands::Unseal { key_cmd } => {
+        Commands::Unseal {
+            token,
+            keys_secret_uri,
+            key_cmd,
+        } => {
             let api = setup_api(&cli.namespace).await?;
-            let keys = get_unseal_keys(key_cmd.join(" ")).await?;
-            if keys.is_empty() {
-                anyhow::bail!("no unseal keys returned from command")
+            let sealed = list_sealed_pods(&api).await?;
+
+            if sealed.is_empty() {
+                return Ok(());
             }
 
-            for pod in list_sealed_pods(&api).await?.iter() {
+            let mut keys = Vec::new();
+
+            if let Some(path) = keys_secret_uri {
+                let token = get_token(token)?;
+
+                let uri = http::Uri::from_str(&path)?;
+
+                let mut client = GetUnsealKeysFromVault::new(&uri)?;
+
+                let mut k = client
+                    .get_unseal_keys(
+                        uri.path_and_query()
+                            .ok_or(anyhow::anyhow!("keys secret uri is not valid: {}", path))?,
+                        token,
+                    )
+                    .await?;
+
+                keys.append(&mut k);
+            } else if let Some(cmd) = key_cmd {
+                let mut k = get_unseal_keys(&cmd).await?;
+
+                if k.is_empty() {
+                    anyhow::bail!("no unseal keys returned from command")
+                }
+
+                keys.append(&mut k);
+            } else {
+                anyhow::bail!("no keys secret uri or key cmd specified")
+            }
+
+            for pod in sealed.iter() {
                 PodApi::new(api.clone(), cli.tls, cli.domain.clone())
                     .http(
                         pod.metadata
@@ -220,13 +275,40 @@ async fn main() -> anyhow::Result<()> {
             token,
             should_unseal,
             force_upgrade,
+            keys_secret_uri,
             key_cmd,
         } => {
             let stss = setup_api(&cli.namespace).await?;
             let pods = setup_api(&cli.namespace).await?;
-            let keys = get_unseal_keys(key_cmd.join(" ")).await?;
-            if keys.is_empty() {
-                anyhow::bail!("no unseal keys returned from command")
+
+            let mut keys = Vec::new();
+
+            let token = get_token(token)?;
+
+            if let Some(path) = keys_secret_uri {
+                let uri = http::Uri::from_str(&path)?;
+
+                let mut client = GetUnsealKeysFromVault::new(&uri)?;
+
+                let mut k = client
+                    .get_unseal_keys(
+                        uri.path_and_query()
+                            .ok_or(anyhow::anyhow!("keys secret uri is not valid: {}", path))?,
+                        token.clone(),
+                    )
+                    .await?;
+
+                keys.append(&mut k);
+            } else if let Some(cmd) = key_cmd {
+                let mut k = get_unseal_keys(&cmd).await?;
+
+                if k.is_empty() {
+                    anyhow::bail!("no unseal keys returned from command")
+                }
+
+                keys.append(&mut k);
+            } else {
+                anyhow::bail!("no keys secret uri or key cmd specified")
             }
 
             let sts = stss.get(&cli.statefulset).await?;
@@ -235,7 +317,7 @@ async fn main() -> anyhow::Result<()> {
                 .upgrade(
                     sts.clone(),
                     &PodApi::new(pods.clone(), cli.tls, cli.domain),
-                    get_token(token)?,
+                    token,
                     should_unseal,
                     force_upgrade,
                     &keys,
