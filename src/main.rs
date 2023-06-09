@@ -1,29 +1,31 @@
 use clap::builder::TypedValueParser;
-use clap::{ArgAction, Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 use k8s_openapi::api::apps::v1::StatefulSet;
 use kube::{api::Api, core::ObjectMeta, Client};
 use secrecy::Secret;
 use std::collections::HashMap;
+use std::io;
 use std::str::FromStr;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
-use vault_mgmt::{GetUnsealKeys, GetUnsealKeysFromVault};
 
 use vault_mgmt::{
-    construct_table, is_statefulset_ready, StepDown, VAULT_PORT, {self, exec, ExecIn},
-    {get_unseal_keys, list_sealed_pods, Unseal}, {list_vault_pods, PodApi, StatefulSetApi},
+    construct_table, is_statefulset_ready, GetUnsealKeys, GetUnsealKeysFromVault, StepDown,
+    VAULT_PORT, {self, exec, ExecIn}, {get_unseal_keys, list_sealed_pods, Unseal},
+    {list_vault_pods, PodApi, StatefulSetApi},
 };
 
 /// Manage your vault installation in Kubernetes
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(name = "vault-mgmt-cli", author, version, about, long_about = None)]
 struct Cli {
     /// Namespace to work in
-    #[arg(short, long, default_value = "vault")]
+    #[arg(short = 'n', long, default_value = "vault")]
     namespace: String,
 
     /// Log level
     #[arg(
-        short,
+        short = 'l',
         long,
         default_value = "info",
         value_parser = clap::builder::PossibleValuesParser::new(
@@ -33,20 +35,16 @@ struct Cli {
     log_level: tracing::Level,
 
     /// Statefulset name
-    #[arg(long, default_value = "vault")]
+    #[arg(short = 's', long, default_value = "vault")]
     statefulset: String,
 
     /// Vault domain name, used for TLS verification
-    #[arg(long, default_value = "vault")]
+    #[arg(short = 'd', long, default_value = "vault")]
     domain: String,
 
-    /// Use TLS for communication with vault
-    #[arg(long, action = ArgAction::Set, default_value = "true")]
-    tls: bool,
-
-    /// Verify TLS certificate
-    #[arg(long, action = ArgAction::Set, default_value = "true")]
-    tls_verify: bool,
+    /// Do not use TLS for communication with vault
+    #[arg(long)]
+    no_tls: bool,
 
     /// Subcommand to run
     #[command(subcommand)]
@@ -76,7 +74,7 @@ enum Commands {
         exec_in: ExecIn,
 
         /// environment variables to set as key=value pairs
-        #[arg(short, long)]
+        #[arg(short = 'e', long)]
         env: Vec<String>,
 
         /// environment variables to set from the current environment
@@ -89,7 +87,7 @@ enum Commands {
     Unseal {
         /// vault token to use for retrieving the unseal keys
         /// if not provided, the token will be read from the VAULT_TOKEN environment variable
-        #[arg(short, long)]
+        #[arg(short = 't', long)]
         token: Option<Secret<String>>,
 
         /// uri to vault kv secret containing the unseal keys.
@@ -109,7 +107,7 @@ enum Commands {
     StepDown {
         /// vault token to use for the step down
         /// if not provided, the token will be read from the VAULT_TOKEN environment variable
-        #[arg(short, long)]
+        #[arg(short = 't', long)]
         token: Option<Secret<String>>,
     },
 
@@ -125,18 +123,18 @@ enum Commands {
     Upgrade {
         /// vault token to use for the step down (and retrieving the unseal keys if configured)
         /// if not provided, the token will be read from the VAULT_TOKEN environment variable
-        #[arg(short, long)]
+        #[arg(short = 't', long)]
         token: Option<Secret<String>>,
 
-        /// Unseal the pods after upgrading.
-        /// If this is set to false, the upgrade process will wait for the pods to be unsealed externally.
-        #[arg(short = 'u', long, action = ArgAction::Set, default_value = "true")]
-        should_unseal: bool,
+        /// Do not unseal the pods after upgrading.
+        /// If this is specified, the upgrade process will wait for the pods to be unsealed externally.
+        #[arg(short = 'u', long)]
+        do_not_unseal: bool,
 
         /// Force upgrading the pods even when the version is already updated.
         /// If this is not enabled, every upgraded pod will be skipped.
         /// This is useful when you want to roll the pods gracefully for other reasons (e.g. certificate rotation).
-        #[arg(short, long, action = ArgAction::Set, default_value = "false")]
+        #[arg(short = 'f', long)]
         force_upgrade: bool,
 
         /// uri to vault kv secret containing the unseal keys.
@@ -151,6 +149,13 @@ enum Commands {
         #[arg(long)]
         key_cmd: Option<String>,
     },
+
+    /// Generate autocompletion scripts for your shell
+    #[command(arg_required_else_help = true)]
+    Completion {
+        /// Shell to generate the autocompletion script for
+        shell: Shell,
+    },
 }
 
 #[tokio::main]
@@ -158,7 +163,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(format!("vault_mgmt={}", cli.log_level)));
+        .unwrap_or_else(|_| EnvFilter::new(format!("vault_mgmt_cli={}", cli.log_level)));
     tracing::subscriber::set_global_default(
         Registry::default()
             .with(env_filter)
@@ -166,6 +171,12 @@ async fn main() -> anyhow::Result<()> {
     )?;
 
     match cli.command {
+        Commands::Completion { shell } => {
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+
+            generate(shell, &mut cmd, name, &mut io::stdout());
+        }
         Commands::Show {} => {
             let api = setup_api(&cli.namespace).await?;
             let table = construct_table(&api).await?;
@@ -191,7 +202,7 @@ async fn main() -> anyhow::Result<()> {
                 "no active vault pod found. is vault sealed?"
             ))?;
 
-            PodApi::new(api, cli.tls, cli.domain)
+            PodApi::new(api, !cli.no_tls, cli.domain)
                 .http(
                     active
                         .metadata
@@ -257,7 +268,7 @@ async fn main() -> anyhow::Result<()> {
             }
 
             for pod in sealed.iter() {
-                PodApi::new(api.clone(), cli.tls, cli.domain.clone())
+                PodApi::new(api.clone(), !cli.no_tls, cli.domain.clone())
                     .http(
                         pod.metadata
                             .name
@@ -273,7 +284,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Upgrade {
             token,
-            should_unseal,
+            do_not_unseal,
             force_upgrade,
             keys_secret_uri,
             key_cmd,
@@ -316,9 +327,9 @@ async fn main() -> anyhow::Result<()> {
             StatefulSetApi::from(stss.clone())
                 .upgrade(
                     sts.clone(),
-                    &PodApi::new(pods.clone(), cli.tls, cli.domain),
+                    &PodApi::new(pods.clone(), !cli.no_tls, cli.domain),
                     token,
-                    should_unseal,
+                    !do_not_unseal,
                     force_upgrade,
                     &keys,
                 )

@@ -1,6 +1,6 @@
 [package]
 name = "vault-mgmt"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [lib]
@@ -47,3 +47,4 @@ tower-test = "0.4.0"
 http = "0.2.9"
 async-trait = "0.1.68"
 wiremock = "0.5.18"
+clap_complete = "4.3.1"
