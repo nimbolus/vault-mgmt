@@ -3,7 +3,7 @@ use futures_util::StreamExt;
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::{Api, AttachParams, AttachedProcess};
 use secrecy::{ExposeSecret, Secret};
-use std::{collections::HashMap, io::Write};
+use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
 
 use crate::{list_vault_pods, LABEL_KEY_VAULT_ACTIVE, LABEL_KEY_VAULT_SEALED};
@@ -51,8 +51,8 @@ pub async fn exec(
 
     let (stdout, stderr) = exec_pod(api, pod, cmd, env).await?;
 
-    std::io::stdout().write_all(stdout.as_bytes())?;
-    std::io::stderr().write_all(stderr.as_bytes())?;
+    tokio::io::stdout().write_all(stdout.as_bytes()).await?;
+    tokio::io::stderr().write_all(stderr.as_bytes()).await?;
 
     Ok(())
 }
