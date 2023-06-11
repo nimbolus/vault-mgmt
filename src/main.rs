@@ -8,6 +8,7 @@ use self_update::cargo_crate_version;
 use std::collections::HashMap;
 use std::io;
 use std::str::FromStr;
+use tokio::task::spawn_blocking;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
 
 use vault_mgmt_lib::{
@@ -360,11 +361,14 @@ async fn main() -> anyhow::Result<()> {
                 status.auth_token(&token);
             }
 
-            status
-                .show_download_progress(true)
-                .current_version(cargo_crate_version!())
-                .build()?
-                .update()?;
+            spawn_blocking(move || {
+                status
+                    .show_download_progress(true)
+                    .current_version(cargo_crate_version!())
+                    .build()?
+                    .update()
+            })
+            .await??;
         }
     }
 
