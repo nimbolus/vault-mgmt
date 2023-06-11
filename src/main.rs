@@ -4,20 +4,21 @@ use clap_complete::{generate, Shell};
 use k8s_openapi::api::apps::v1::StatefulSet;
 use kube::{api::Api, core::ObjectMeta, Client};
 use secrecy::Secret;
+use self_update::cargo_crate_version;
 use std::collections::HashMap;
 use std::io;
 use std::str::FromStr;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
 
-use vault_mgmt::{
+use vault_mgmt_lib::{
     construct_table, is_statefulset_ready, GetUnsealKeys, GetUnsealKeysFromVault, StepDown,
-    VAULT_PORT, {self, exec, ExecIn}, {get_unseal_keys, list_sealed_pods, Unseal},
+    VAULT_PORT, {exec, ExecIn}, {get_unseal_keys, list_sealed_pods, Unseal},
     {list_vault_pods, PodApi, StatefulSetApi},
 };
 
 /// Manage your vault installation in Kubernetes
 #[derive(Parser, Debug)]
-#[command(name = "vault-mgmt-cli", author, version, about, long_about = None)]
+#[command(name = "vault-mgmt", author, version, about, long_about = None)]
 struct Cli {
     /// Namespace to work in
     #[arg(short = 'n', long, default_value = "vault")]
@@ -156,6 +157,9 @@ enum Commands {
         /// Shell to generate the autocompletion script for
         shell: Shell,
     },
+
+    /// Update the vault-mgmt binary to the latest version
+    SelfUpdate {},
 }
 
 #[tokio::main]
@@ -344,6 +348,23 @@ async fn main() -> anyhow::Result<()> {
                 is_statefulset_ready(),
             )
             .await?;
+        }
+        Commands::SelfUpdate {} => {
+            let mut status = self_update::backends::github::Update::configure();
+            status
+                .repo_owner("nimbolus")
+                .repo_name("vault-mgmt")
+                .bin_name("vault-mgmt");
+
+            if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+                status.auth_token(&token);
+            }
+
+            status
+                .show_download_progress(true)
+                .current_version(cargo_crate_version!())
+                .build()?
+                .update()?;
         }
     }
 

@@ -1,14 +1,14 @@
 [package]
 name = "vault-mgmt"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 [lib]
-name = "vault_mgmt"
+name = "vault_mgmt_lib"
 path = "src/lib.rs"
 
 [[bin]]
-name = "vault-mgmt-cli"
+name = "vault-mgmt"
 path = "src/main.rs"
 
 [dependencies]
@@ -48,3 +48,8 @@ http = "0.2.9"
 async-trait = "0.1.68"
 wiremock = "0.5.18"
 clap_complete = "4.3.1"
+self_update = { version = "0.37.0", default-features = false, features = [
+    "rustls",
+    "compression-flate2",
+    "archive-tar",
+] }

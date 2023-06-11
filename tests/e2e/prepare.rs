@@ -4,7 +4,7 @@ use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Pod;
 use kube::{api::ListParams, Api};
 
-use vault_mgmt::{
+use vault_mgmt_lib::{
     PodApi, Unseal, VAULT_PORT, {is_pod_ready, is_statefulset_ready},
     {is_seal_status_initialized, GetSealStatus}, {Init, InitRequest, InitResult},
 };

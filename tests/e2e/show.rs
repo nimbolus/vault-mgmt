@@ -1,5 +1,7 @@
 use kube::{Api, Client};
 
+use vault_mgmt_lib::construct_table;
+
 use crate::{helm, prepare, setup::get_namespace};
 
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
@@ -25,7 +27,7 @@ async fn show_succeeds() {
         .await
         .unwrap();
 
-    let table = vault_mgmt::construct_table(&pods).await.unwrap();
+    let table = construct_table(&pods).await.unwrap();
 
     let mut buf = Vec::new();
     table.print(&mut buf).unwrap();

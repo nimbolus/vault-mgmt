@@ -6,7 +6,8 @@ use kube::{
     Api, Client,
 };
 use secrecy::ExposeSecret;
-use vault_mgmt::{
+
+use vault_mgmt_lib::{
     is_pod_sealed, PodApi, Unseal, VaultVersion, VAULT_PORT,
     {raft_configuration_all_voters, GetRaftConfiguration},
 };
