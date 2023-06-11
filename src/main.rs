@@ -167,7 +167,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(format!("vault_mgmt_cli={}", cli.log_level)));
+        .unwrap_or_else(|_| EnvFilter::new(format!("vault_mgmt={}", cli.log_level)));
     tracing::subscriber::set_global_default(
         Registry::default()
             .with(env_filter)

@@ -2,6 +2,13 @@
 name = "vault-mgmt"
 version = "0.1.2"
 edition = "2021"
+description = "Manage your vault installation in Kubernetes (upgrades, unseal, step-down, ...)."
+license = "MIT"
+homepage = "https://github.com/nimbolus/vault-mgmt"
+repository = "https://github.com/nimbolus/vault-mgmt"
+readme = "README.md"
+keywords = ["vault", "kubernetes", "upgrade"]
+categories = ["command-line-utilities"]
 
 [lib]
 name = "vault_mgmt_lib"
