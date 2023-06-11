@@ -175,6 +175,8 @@ async fn main() -> anyhow::Result<()> {
             .with(tracing_subscriber::fmt::layer()),
     )?;
 
+    env_logger::init();
+
     match cli.command {
         Commands::Completion { shell } => {
             let mut cmd = Cli::command();

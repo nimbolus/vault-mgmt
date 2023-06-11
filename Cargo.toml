@@ -1,6 +1,6 @@
 [package]
 name = "vault-mgmt"
-version = "0.1.2"
+version = "0.1.1"
 edition = "2021"
 description = "Manage your vault installation in Kubernetes (upgrades, unseal, step-down, ...)."
 license = "MIT"
@@ -60,3 +60,4 @@ self_update = { version = "0.37.0", default-features = false, features = [
     "compression-flate2",
     "archive-tar",
 ] }
+env_logger = "0.10.0"
