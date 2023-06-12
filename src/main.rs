@@ -323,7 +323,7 @@ async fn main() -> anyhow::Result<()> {
                 }
 
                 keys.append(&mut k);
-            } else {
+            } else if !do_not_unseal {
                 anyhow::bail!("no keys secret uri or key cmd specified")
             }
 
