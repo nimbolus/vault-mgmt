@@ -60,3 +60,4 @@ self_update = { version = "0.37.0", default-features = false, features = [
     "compression-flate2",
     "archive-tar",
 ] }
+tokio-retry = "0.3.0"

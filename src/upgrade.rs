@@ -1,6 +1,10 @@
 use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
 use kube::{api::DeleteParams, runtime::wait::conditions::is_pod_running};
 use secrecy::Secret;
+use tokio_retry::{
+    strategy::{jitter, ExponentialBackoff},
+    Retry,
+};
 use tracing::*;
 
 use crate::{
@@ -83,7 +87,13 @@ impl PodApi {
             })?;
 
         let pod = self.api.get(name).await?;
-        let mut pf = self.http(name, VAULT_PORT).await.map_err(|e| {
+
+        let mut pf = Retry::spawn(
+            ExponentialBackoff::from_millis(50).map(jitter).take(5),
+            || async move { self.http(name, VAULT_PORT).await },
+        )
+        .await
+        .map_err(|e| {
             anyhow::anyhow!(
                 "attempting to forward http requests to {}: {}",
                 name,
