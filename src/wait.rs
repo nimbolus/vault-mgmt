@@ -78,6 +78,20 @@ pub fn is_pod_ready() -> impl Condition<Pod> {
     }
 }
 
+/// Returns true if the Pod has the seal status label.
+/// This is determined by looking if the `vault-sealed` label exists.
+#[must_use]
+pub fn is_pod_exporting_seal_status() -> impl Condition<Pod> {
+    |obj: Option<&Pod>| {
+        if let Some(pod) = &obj {
+            if let Some(labels) = &pod.metadata.labels {
+                return labels.get("vault-sealed").is_some();
+            }
+        }
+        false
+    }
+}
+
 /// Returns true if the Pod is unsealed.
 /// This is determined by looking at the `vault-sealed` label.
 #[must_use]

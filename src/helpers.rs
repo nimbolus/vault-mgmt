@@ -27,6 +27,22 @@ pub fn is_sealed(pod: &Pod) -> anyhow::Result<bool> {
     }
 }
 
+/// Check if the vault pod is active based on its labels
+/// Returns an error if the pod does not have the expected labels
+pub fn is_active(pod: &Pod) -> anyhow::Result<bool> {
+    match pod.metadata.labels.as_ref() {
+        None => Err(anyhow::anyhow!("pod does not have labels")),
+        Some(labels) => match labels.get(LABEL_KEY_VAULT_ACTIVE) {
+            Some(x) if x.as_str() == "true" => Ok(true),
+            Some(x) if x.as_str() == "false" => Ok(false),
+            _ => Err(anyhow::anyhow!(
+                "pod does not have a {} label",
+                LABEL_KEY_VAULT_ACTIVE
+            )),
+        },
+    }
+}
+
 /// Wrapper around the kube::Api type for the Vault pod
 #[derive(Clone)]
 pub struct PodApi {

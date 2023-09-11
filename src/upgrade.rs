@@ -8,9 +8,9 @@ use tokio_retry::{
 use tracing::*;
 
 use crate::{
-    ExecIn, StepDown, Unseal, VaultVersion, VAULT_PORT,
+    is_active, is_pod_exporting_seal_status, ExecIn, StepDown, Unseal, VaultVersion, VAULT_PORT,
     {is_pod_ready, is_pod_standby, is_pod_unsealed}, {is_seal_status_initialized, GetSealStatus},
-    {is_sealed, list_vault_pods, PodApi, StatefulSetApi, LABEL_KEY_VAULT_ACTIVE},
+    {is_sealed, list_vault_pods, PodApi, StatefulSetApi},
 };
 
 impl PodApi {
@@ -49,18 +49,7 @@ impl PodApi {
         // if Pod version is outdated (or upgrade is forced)
         if !Self::is_current(&pod, target)? || force_upgrade {
             // if Pod is active
-            if pod
-                .metadata
-                .labels
-                .ok_or(anyhow::anyhow!("pod does not have labels"))?
-                .get(LABEL_KEY_VAULT_ACTIVE)
-                .ok_or(anyhow::anyhow!(
-                    "pod does not have an {} label",
-                    LABEL_KEY_VAULT_ACTIVE
-                ))?
-                .as_str()
-                == "true"
-            {
+            if is_active(&pod)? {
                 // Step down active pod
                 self.http(name, VAULT_PORT).await?.step_down(token).await?;
 
@@ -86,35 +75,45 @@ impl PodApi {
                 anyhow::anyhow!("waiting for pod {} to be running: {}", name, e.to_string())
             })?;
 
-        let pod = self.api.get(name).await?;
-
-        let mut pf = Retry::spawn(
-            ExponentialBackoff::from_millis(50).map(jitter).take(5),
-            || async move { self.http(name, VAULT_PORT).await },
+        // Wait for pod to export its seal status
+        kube::runtime::wait::await_condition(
+            self.api.clone(),
+            name,
+            is_pod_exporting_seal_status(),
         )
-        .await
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "attempting to forward http requests to {}: {}",
-                name,
-                e.to_string()
-            )
-        })?;
+        .await?;
 
-        pf.await_seal_status(is_seal_status_initialized())
-            .await
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "waiting for pod to have required seal status {}: {}",
-                    name,
-                    e.to_string()
-                )
-            })?;
+        // Refresh pod
+        let pod = self.api.get(name).await?;
 
         if Self::is_current(&pod, target)? {
             // Pod is sealed
             if is_sealed(&pod)? {
                 if should_unseal {
+                    let mut pf = Retry::spawn(
+                        ExponentialBackoff::from_millis(50).map(jitter).take(5),
+                        || async move { self.http(name, VAULT_PORT).await },
+                    )
+                    .await
+                    .map_err(|e| {
+                        anyhow::anyhow!(
+                            "attempting to forward http requests to {}: {}",
+                            name,
+                            e.to_string()
+                        )
+                    })?;
+
+                    // Wait for pod to have determined its seal status
+                    pf.await_seal_status(is_seal_status_initialized())
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!(
+                                "waiting for pod to have required seal status {}: {}",
+                                name,
+                                e.to_string()
+                            )
+                        })?;
+
                     // Unseal pod
                     pf.unseal(keys).await.map_err(|e| {
                         anyhow::anyhow!("unsealing pod {}: {}", name, e.to_string())

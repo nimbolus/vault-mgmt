@@ -424,7 +424,7 @@ async fn upgrade_pod_succeeds_fails_with_missing_external_unseal() {
 
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]
-async fn upgrade_pod_succeeds_succeeds_with_external_unseal() {
+async fn upgrade_pod_succeeds_with_external_unseal() {
     let client = Client::try_default().await.unwrap();
 
     let namespace = &get_namespace();
