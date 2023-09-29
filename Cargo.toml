@@ -1,6 +1,6 @@
 [package]
 name = "vault-mgmt"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 description = "Manage your vault installation in Kubernetes (upgrades, unseal, step-down, ...)."
 license = "MIT"
