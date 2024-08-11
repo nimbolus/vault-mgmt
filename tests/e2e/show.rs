@@ -2,11 +2,16 @@ use kube::{Api, Client};
 
 use vault_mgmt_lib::construct_table;
 
-use crate::{helm, prepare, setup::get_namespace};
+use crate::{
+    helm, prepare,
+    setup::{get_namespace, setup_crypto_provider},
+};
 
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]
 async fn show_succeeds() {
+    setup_crypto_provider().await;
+
     let client = Client::try_default().await.unwrap();
 
     let namespace = &get_namespace();

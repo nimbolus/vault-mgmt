@@ -1,9 +1,21 @@
 use k8s_openapi::api::core::v1::Pod;
 use kube::{Api, Client};
-use tokio::process::Command;
+use tokio::{process::Command, sync::OnceCell};
 
 pub fn get_namespace() -> String {
     std::env::var("VAULT_MGMT_E2E_NAMESPACE").unwrap_or_else(|_| "vault-mgmt-e2e".to_string())
+}
+
+static ONCE_CRYPTO_SETUP: OnceCell<()> = OnceCell::const_new();
+
+pub async fn setup_crypto_provider() {
+    ONCE_CRYPTO_SETUP
+        .get_or_init(|| async {
+            rustls::crypto::ring::default_provider()
+                .install_default()
+                .unwrap();
+        })
+        .await;
 }
 
 #[ignore = "needs a running kubernetes cluster and the helm cli"]

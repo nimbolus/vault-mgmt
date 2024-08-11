@@ -167,6 +167,10 @@ enum Commands {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .unwrap();
+
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(format!("vault_mgmt={}", cli.log_level)));
     tracing::subscriber::set_global_default(

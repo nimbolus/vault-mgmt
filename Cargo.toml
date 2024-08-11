@@ -19,21 +19,21 @@ name = "vault-mgmt"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0.69"
-clap = { version = "4.2.1", features = ["derive", "wrap_help"] }
-tracing = "0.1.37"
-tracing-subscriber = { version = "0.3.16", features = [
+anyhow = "1.0.86"
+clap = { version = "4.5.15", features = ["derive", "wrap_help"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = [
     "registry",
     "env-filter",
 ] }
-tokio = { version = "1.14.0", features = ["full"] }
-tokio-util = "0.7.7"
-tokio-rustls = { version = "0.24.0", features = ["dangerous_configuration"] }
-hyper = { version = "0.14.25", features = ["backports"] }
-hyper-rustls = "0.24.0"
+tokio = { version = "1.39.2", features = ["full"] }
+tokio-util = "0.7.11"
+tokio-rustls = "0.26.0"
+hyper = "1.4.1"
+hyper-rustls = "0.27.2"
 tower = "0.4.13"
-futures-util = "0.3.27"
-kube = { version = "0.81.0", default-features = false, features = [
+futures-util = "0.3.30"
+kube = { version = "0.93.1", default-features = false, features = [
     "client",
     "config",
     "runtime",
@@ -41,23 +41,37 @@ kube = { version = "0.81.0", default-features = false, features = [
     "derive",
     "ws",
 ] }
-k8s-openapi = { version = "0.17.0", features = ["v1_24"] }
-serde_json = "1.0.94"
+k8s-openapi = { version = "0.22.0", features = ["v1_24"] }
+serde_json = "1.0.122"
 secrecy = { version = "0.8.0", features = ["serde"] }
 prettytable = "0.10.0"
 owo-colors = { version = "3", features = ["supports-colors"] }
-serde_yaml = "0.9.21"
-which = "4.4.0"
+serde_yaml = "0.9.34"
+which = "6.0.2"
 rand = "0.8.5"
-serde = "1.0.160"
+serde = "1.0.206"
 tower-test = "0.4.0"
-http = "0.2.9"
-async-trait = "0.1.68"
-wiremock = "0.5.18"
-clap_complete = "4.3.1"
-self_update = { version = "0.37.0", default-features = false, features = [
+http = "1.1.0"
+async-trait = "0.1.81"
+wiremock = "0.6.1"
+clap_complete = "4.5.14"
+self_update = { version = "0.41.0", default-features = false, features = [
     "rustls",
     "compression-flate2",
     "archive-tar",
 ] }
 tokio-retry = "0.3.0"
+rustls = { version = "0.23.12", default-features = false, features = [
+    "log",
+    "logging",
+    "ring",
+    "std",
+    "tls12",
+] }
+http-body-util = "0.1.2"
+hyper-util = { version = "0.1.7", features = [
+    "client-legacy",
+    "http1",
+    "tokio",
+] }
+rustls-native-certs = "0.7.1"

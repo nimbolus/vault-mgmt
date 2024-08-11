@@ -1,13 +1,14 @@
 use http::uri::Scheme;
-use hyper::Body;
+use http_body_util::{BodyExt, Full};
+use hyper::body::Bytes;
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::Api;
 use secrecy::{ExposeSecret, Secret};
 use tokio::process::Command;
 
 use crate::{
-    get_unseal_keys_request, list_vault_pods, ExecIn, HttpForwarderService,
-    {unseal_request, HttpRequest},
+    get_unseal_keys_request, list_vault_pods, unseal_request, BytesBody, ExecIn,
+    HttpForwarderService, HttpRequest,
 };
 
 /// Get the unseal keys by running the specified command
@@ -45,7 +46,7 @@ pub trait Unseal {
 #[async_trait::async_trait]
 impl<T> Unseal for T
 where
-    T: HttpRequest + Send + Sync + 'static,
+    T: HttpRequest<BytesBody> + Send + Sync + 'static,
 {
     async fn unseal(&mut self, keys: &[Secret<String>]) -> anyhow::Result<()> {
         if keys.is_empty() {
@@ -61,12 +62,11 @@ where
                 "migrate": false,
             });
 
-            let http_req = unseal_request(Body::from(body.to_string()))?;
+            let http_req = unseal_request(Full::new(Bytes::from(body.to_string())).boxed())?;
 
             let (parts, body) = self.send_request(http_req).await?.into_parts();
 
-            let body = hyper::body::to_bytes(body).await?;
-            let body = String::from_utf8(body.to_vec())?;
+            let body = String::from_utf8(body.into()).unwrap();
 
             if !(parts.status.is_success() || parts.status.is_redirection()) {
                 return Err(anyhow::anyhow!("unsealing: {}", body));
@@ -91,7 +91,7 @@ pub trait GetUnsealKeys {
 #[async_trait::async_trait]
 impl<T> GetUnsealKeys for T
 where
-    T: HttpRequest + Send + Sync + 'static,
+    T: HttpRequest<BytesBody> + Send + Sync + 'static,
 {
     async fn get_unseal_keys(
         &mut self,
@@ -102,7 +102,6 @@ where
 
         let (parts, body) = self.send_request(req).await?.into_parts();
 
-        let body = hyper::body::to_bytes(body).await?;
         let body = String::from_utf8(body.to_vec())?;
 
         if !(parts.status.is_success()) {
@@ -211,9 +210,9 @@ mod tests {
     use std::str::FromStr;
 
     use http::{Method, Request, Response, StatusCode};
-    use hyper::Body;
+    use hyper::body::Bytes;
     use k8s_openapi::{api::core::v1::Pod, List};
-    use kube::{Api, Client};
+    use kube::{client::Body, Api, Client};
     use secrecy::Secret;
     use tokio::task::JoinHandle;
     use tokio_util::sync::CancellationToken;
@@ -268,7 +267,7 @@ mod tests {
                         _ => panic!("Unexpected API request {:?} {:?} {:?}", method, uri, query),
                     };
 
-                    send.send_response(Response::builder().body(Body::from(body)).unwrap());
+                    send.send_response(Response::builder().body(Bytes::from(body).into()).unwrap());
                 }
                 _ = cancel.cancelled() => {
                     return;

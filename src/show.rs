@@ -46,7 +46,7 @@ pub async fn construct_table(api: &Api<Pod>) -> anyhow::Result<Table> {
             .as_ref()
             .ok_or(anyhow::anyhow!("pod does not have a spec"))?
             .containers
-            .get(0)
+            .first()
             .ok_or(anyhow::anyhow!("pod does not have a container"))?
             .image
             .clone()

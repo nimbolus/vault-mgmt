@@ -1,8 +1,9 @@
-use hyper::Body;
+use http_body_util::{BodyExt, Empty};
+use hyper::body::Bytes;
 use kube::runtime::wait::Condition;
 use secrecy::Secret;
 
-use crate::{raft_configuration_request, seal_status_request, HttpRequest};
+use crate::{raft_configuration_request, seal_status_request, BytesBody, HttpRequest};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct PodSealStatus {
@@ -45,14 +46,13 @@ pub trait GetSealStatus {
 #[async_trait::async_trait]
 impl<T> GetSealStatus for T
 where
-    T: HttpRequest + Send + Sync + 'static,
+    T: HttpRequest<BytesBody> + Send + Sync + 'static,
 {
     async fn seal_status(&mut self) -> anyhow::Result<PodSealStatus> {
-        let http_req = seal_status_request(Body::from(""))?;
+        let http_req = seal_status_request(Empty::<Bytes>::new().boxed())?;
 
         let (parts, body) = self.send_request(http_req).await?.into_parts();
 
-        let body = hyper::body::to_bytes(body).await?;
         let body = String::from_utf8(body.to_vec())?;
 
         if parts.status != hyper::StatusCode::OK {
@@ -147,17 +147,16 @@ pub trait GetRaftConfiguration {
 #[async_trait::async_trait]
 impl<T> GetRaftConfiguration for T
 where
-    T: HttpRequest + Send + Sync + 'static,
+    T: HttpRequest<BytesBody> + Send + Sync + 'static,
 {
     async fn raft_configuration(
         &mut self,
         token: Secret<String>,
     ) -> anyhow::Result<RaftConfiguration> {
-        let http_req = raft_configuration_request(token, Body::from(""))?;
+        let http_req = raft_configuration_request(token, Empty::<Bytes>::new().boxed())?;
 
         let (parts, body) = self.send_request(http_req).await?.into_parts();
 
-        let body = hyper::body::to_bytes(body).await?;
         let body = String::from_utf8(body.to_vec())?;
 
         if parts.status != hyper::StatusCode::OK {

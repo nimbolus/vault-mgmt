@@ -2,7 +2,7 @@ use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
 use kube::{api::ListParams, Api};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::HttpForwarderService;
+use crate::{BytesBody, HttpForwarderService};
 
 pub const LABEL_KEY_VAULT_ACTIVE: &str = "vault-active";
 pub const LABEL_KEY_VAULT_SEALED: &str = "vault-sealed";
@@ -73,7 +73,11 @@ impl PodApi {
         ))
     }
 
-    pub async fn http(&self, pod: &str, port: u16) -> anyhow::Result<HttpForwarderService> {
+    pub async fn http(
+        &self,
+        pod: &str,
+        port: u16,
+    ) -> anyhow::Result<HttpForwarderService<BytesBody>> {
         let pf = self.portforward(pod, port).await?;
 
         if self.tls {

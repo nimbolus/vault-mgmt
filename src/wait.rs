@@ -141,7 +141,7 @@ pub fn is_pod_standby() -> impl Condition<Pod> {
 #[cfg(test)]
 mod tests {
     use http::{Request, Response};
-    use hyper::Body;
+    use hyper::body::Bytes;
     use k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetStatus},
@@ -150,7 +150,7 @@ mod tests {
         apimachinery::pkg::apis::meta::v1::WatchEvent,
         List,
     };
-    use kube::{Api, Client, ResourceExt};
+    use kube::{client::Body, Api, Client, ResourceExt};
     use serde_json::Value;
     use tokio_util::sync::CancellationToken;
     use tower_test::mock::{self, Handle};
@@ -190,7 +190,7 @@ uri.as_str(),
             _ => panic!("Unexpected API request {:?}", request),
         };
 
-        send.send_response(Response::builder().body(Body::from(body)).unwrap());
+        send.send_response(Response::builder().body(Bytes::from(body).into()).unwrap());
     }
 
     async fn mock_list_sts(
@@ -260,7 +260,7 @@ uri.as_str(),
                         _ => panic!("Unexpected API request {:?} {:?} {:?}", method, uri, query),
                     };
 
-                    send.send_response(Response::builder().body(Body::from(body)).unwrap());
+                    send.send_response(Response::builder().body(Bytes::from(body).into()).unwrap());
                 }
                 _ = cancel.cancelled() => {
                     return;

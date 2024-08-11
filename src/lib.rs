@@ -21,6 +21,5 @@ pub use show::*;
 pub use status::*;
 pub use step_down::*;
 pub use unseal::*;
-pub use upgrade::*;
 pub use version::*;
 pub use wait::*;

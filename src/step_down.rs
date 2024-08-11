@@ -1,7 +1,8 @@
-use hyper::Body;
+use http_body_util::{BodyExt, Empty};
+use hyper::body::Bytes;
 use secrecy::Secret;
 
-use crate::{step_down_request, HttpRequest};
+use crate::{step_down_request, BytesBody, HttpRequest};
 
 /// Step down vault pod from active to standby
 #[async_trait::async_trait]
@@ -13,14 +14,13 @@ pub trait StepDown {
 #[async_trait::async_trait]
 impl<T> StepDown for T
 where
-    T: HttpRequest + Send + Sync + 'static,
+    T: HttpRequest<BytesBody> + Send + Sync + 'static,
 {
     async fn step_down(&mut self, token: Secret<String>) -> anyhow::Result<()> {
-        let http_req = step_down_request(token, Body::from(""))?;
+        let http_req = step_down_request(token, Empty::<Bytes>::new().boxed())?;
 
         let (parts, body) = self.send_request(http_req).await?.into_parts();
 
-        let body = hyper::body::to_bytes(body).await?;
         let body = String::from_utf8(body.to_vec())?;
 
         if parts.status != hyper::StatusCode::NO_CONTENT {

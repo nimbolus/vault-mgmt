@@ -224,9 +224,9 @@ mod tests {
     use std::str::FromStr;
 
     use http::{Request, Response, StatusCode};
-    use hyper::Body;
+    use hyper::body::Bytes;
     use k8s_openapi::{api::core::v1::Pod, List};
-    use kube::{Api, Client};
+    use kube::{client::Body, Api, Client};
     use secrecy::Secret;
     use serde_yaml::Value;
     use tokio::task::JoinHandle;
@@ -346,12 +346,12 @@ mod tests {
                             if method == "DELETE" {
                                 delete_called = true;
                             }
-                            send.send_response(Response::builder().status(StatusCode::NOT_FOUND).body(Body::from("404 not found")).unwrap());
+                            send.send_response(Response::builder().status(StatusCode::NOT_FOUND).body(Bytes::from("404 not found").into()).unwrap());
                             continue;
                         },
                     };
 
-                    send.send_response(Response::builder().body(Body::from(body)).unwrap());
+                    send.send_response(Response::builder().body(Bytes::from(body.to_string()).into()).unwrap());
                 }
                 _ = cancel.cancelled() => {
                     return delete_called;

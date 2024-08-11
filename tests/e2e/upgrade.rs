@@ -12,11 +12,16 @@ use vault_mgmt_lib::{
     {raft_configuration_all_voters, GetRaftConfiguration},
 };
 
-use crate::{helm, prepare, setup::get_namespace};
+use crate::{
+    helm, prepare,
+    setup::{get_namespace, setup_crypto_provider},
+};
 
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]
 async fn upgrade_pod_succeeds_if_already_current() {
+    setup_crypto_provider().await;
+
     let client = Client::try_default().await.unwrap();
 
     let namespace = &get_namespace();
@@ -33,7 +38,7 @@ async fn upgrade_pod_succeeds_if_already_current() {
         .unwrap();
 
     let pods = Api::namespaced(client.clone(), namespace);
-    let stss = Api::namespaced(Client::try_default().await.unwrap(), namespace);
+    let stss = Api::namespaced(client.clone(), namespace);
 
     let init = prepare::init_unseal_cluster(&pods, &stss, &name)
         .await
@@ -77,6 +82,8 @@ async fn upgrade_pod_succeeds_if_already_current() {
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]
 async fn upgrade_pod_succeeds_if_already_current_with_force_upgrade() {
+    setup_crypto_provider().await;
+
     let client = Client::try_default().await.unwrap();
 
     let namespace = &get_namespace();
@@ -93,7 +100,7 @@ async fn upgrade_pod_succeeds_if_already_current_with_force_upgrade() {
         .unwrap();
 
     let pods = Api::namespaced(client.clone(), namespace);
-    let stss = Api::namespaced(Client::try_default().await.unwrap(), namespace);
+    let stss = Api::namespaced(client.clone(), namespace);
 
     let init = prepare::init_unseal_cluster(&pods, &stss, &name)
         .await
@@ -137,6 +144,8 @@ async fn upgrade_pod_succeeds_if_already_current_with_force_upgrade() {
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]
 async fn upgrade_pod_succeeds_if_outdated_and_standby() {
+    setup_crypto_provider().await;
+
     let client = Client::try_default().await.unwrap();
 
     let namespace = &get_namespace();
@@ -153,7 +162,7 @@ async fn upgrade_pod_succeeds_if_outdated_and_standby() {
         .unwrap();
 
     let pods = Api::namespaced(client.clone(), namespace);
-    let stss = Api::namespaced(Client::try_default().await.unwrap(), namespace);
+    let stss = Api::namespaced(client.clone(), namespace);
 
     let init = prepare::init_unseal_cluster(&pods, &stss, &name)
         .await
@@ -234,6 +243,8 @@ async fn upgrade_pod_succeeds_if_outdated_and_standby() {
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]
 async fn upgrade_pod_succeeds_if_outdated_and_active() {
+    setup_crypto_provider().await;
+
     let client = Client::try_default().await.unwrap();
 
     let namespace = &get_namespace();
@@ -250,7 +261,7 @@ async fn upgrade_pod_succeeds_if_outdated_and_active() {
         .unwrap();
 
     let pods = Api::namespaced(client.clone(), namespace);
-    let stss = Api::namespaced(Client::try_default().await.unwrap(), namespace);
+    let stss = Api::namespaced(client.clone(), namespace);
 
     let init = prepare::init_unseal_cluster(&pods, &stss, &name)
         .await
@@ -331,6 +342,8 @@ async fn upgrade_pod_succeeds_if_outdated_and_active() {
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]
 async fn upgrade_pod_succeeds_fails_with_missing_external_unseal() {
+    setup_crypto_provider().await;
+
     let client = Client::try_default().await.unwrap();
 
     let namespace = &get_namespace();
@@ -347,7 +360,7 @@ async fn upgrade_pod_succeeds_fails_with_missing_external_unseal() {
         .unwrap();
 
     let pods = Api::namespaced(client.clone(), namespace);
-    let stss = Api::namespaced(Client::try_default().await.unwrap(), namespace);
+    let stss = Api::namespaced(client.clone(), namespace);
 
     let init = prepare::init_unseal_cluster(&pods, &stss, &name)
         .await
@@ -425,6 +438,8 @@ async fn upgrade_pod_succeeds_fails_with_missing_external_unseal() {
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]
 async fn upgrade_pod_succeeds_with_external_unseal() {
+    setup_crypto_provider().await;
+
     let client = Client::try_default().await.unwrap();
 
     let namespace = &get_namespace();
@@ -441,7 +456,7 @@ async fn upgrade_pod_succeeds_with_external_unseal() {
         .unwrap();
 
     let pods = Api::namespaced(client.clone(), namespace);
-    let stss = Api::namespaced(Client::try_default().await.unwrap(), namespace);
+    let stss = Api::namespaced(client.clone(), namespace);
 
     let init = prepare::init_unseal_cluster(&pods, &stss, &name)
         .await

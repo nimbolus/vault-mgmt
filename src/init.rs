@@ -1,13 +1,12 @@
 use http::Request;
-use hyper::Body;
+use http_body_util::{BodyExt, Full};
+use hyper::body::Bytes;
 use k8s_openapi::api::core::v1::Pod;
 use kube::Api;
 use secrecy::Secret;
 use tracing::*;
 
-use crate::{
-    PodApi, {init_request, raft_join_request, HttpRequest, VAULT_PORT},
-};
+use crate::{init_request, raft_join_request, BytesBody, HttpRequest, PodApi, VAULT_PORT};
 
 #[derive(Debug, serde::Serialize)]
 pub struct InitRequest {
@@ -53,16 +52,15 @@ pub trait Init {
 #[async_trait::async_trait]
 impl<T> Init for T
 where
-    T: HttpRequest + Send + Sync + 'static,
+    T: HttpRequest<BytesBody> + Send + Sync + 'static,
 {
     async fn init(&mut self, req: InitRequest) -> anyhow::Result<InitResult> {
         let body = serde_json::ser::to_string(&req)?;
 
-        let http_req = init_request(Body::from(body.to_string()))?;
+        let http_req = init_request(Full::new(Bytes::from(body.to_string())).boxed())?;
 
         let (parts, body) = self.send_request(http_req).await?.into_parts();
 
-        let body = hyper::body::to_bytes(body).await?;
         let body = String::from_utf8(body.to_vec())?;
 
         if parts.status != hyper::StatusCode::OK {
@@ -85,18 +83,17 @@ pub trait RaftJoin {
 #[async_trait::async_trait]
 impl<T> RaftJoin for T
 where
-    T: HttpRequest + Send + Sync + 'static,
+    T: HttpRequest<BytesBody> + Send + Sync + 'static,
 {
     async fn raft_join(&mut self, join_to: &str) -> anyhow::Result<()> {
         let body = serde_json::json!({
             "leader_api_addr": join_to,
         });
 
-        let http_req = raft_join_request(Body::from(body.to_string()))?;
+        let http_req = raft_join_request(Full::new(Bytes::from(body.to_string())).boxed())?;
 
         let (parts, body) = self.send_request(http_req).await?.into_parts();
 
-        let body = hyper::body::to_bytes(body).await?;
         let body = String::from_utf8(body.to_vec())?;
 
         if parts.status != hyper::StatusCode::OK {
@@ -142,11 +139,10 @@ pub async fn init(domain: String, api: &Api<Pod>, pod_name: &str) -> anyhow::Res
         .header("Host", "127.0.0.1")
         .header("X-Vault-Request", "true")
         .method(hyper::Method::PUT)
-        .body(Body::from(body.to_string()))?;
+        .body(Full::new(Bytes::from(body.to_string())).boxed())?;
 
     let (parts, body) = pf.send_request(http_req).await?.into_parts();
 
-    let body = hyper::body::to_bytes(body).await?;
     let body = String::from_utf8(body.to_vec())?;
 
     if parts.status != hyper::StatusCode::OK {
@@ -198,11 +194,10 @@ pub async fn raft_join(
         .header("Host", "127.0.0.1")
         .header("X-Vault-Request", "true")
         .method(hyper::Method::POST)
-        .body(Body::from(body.to_string()))?;
+        .body(Full::new(Bytes::from(body.to_string())).boxed())?;
 
     let (parts, body) = pf.send_request(http_req).await?.into_parts();
 
-    let body = hyper::body::to_bytes(body).await?;
     let body = String::from_utf8(body.to_vec())?;
 
     if parts.status != hyper::StatusCode::OK {
