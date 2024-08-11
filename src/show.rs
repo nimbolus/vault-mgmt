@@ -1,21 +1,20 @@
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::Api;
-use owo_colors::{AnsiColors, DynColors, OwoColorize, Stream::Stdout};
-use prettytable::Table;
+use prettytable::{color, Attr, Cell, Row, Table};
 
 use crate::list_vault_pods;
 
 #[tracing::instrument(skip_all)]
 pub async fn construct_table(api: &Api<Pod>) -> anyhow::Result<Table> {
     let mut table = Table::new();
-    table.add_row(row![
-        "NAME".if_supports_color(Stdout, |text| text.bold()),
-        "STATUS".if_supports_color(Stdout, |text| text.bold()),
-        "IMAGE".if_supports_color(Stdout, |text| text.bold()),
-        "INITIALIZED".if_supports_color(Stdout, |text| text.bold()),
-        "SEALED".if_supports_color(Stdout, |text| text.bold()),
-        "ACTIVE".if_supports_color(Stdout, |text| text.bold()),
-        "READY".if_supports_color(Stdout, |text| text.bold()),
+    table.set_titles(row![
+        "NAME",
+        "STATUS",
+        "IMAGE",
+        "INITIALIZED",
+        "SEALED",
+        "ACTIVE",
+        "READY",
     ]);
 
     let pods = api.list(&list_vault_pods()).await?;
@@ -51,30 +50,29 @@ pub async fn construct_table(api: &Api<Pod>) -> anyhow::Result<Table> {
             .image
             .clone()
             .ok_or(anyhow::anyhow!("container does not have an image"))?;
+
         let initialized = get_vault_label(p, "vault-initialized");
-        let initialized = initialized.if_supports_color(Stdout, |text| {
-            text.color(match initialized.as_str() {
-                "true" => DynColors::Ansi(AnsiColors::Green),
-                "false" => DynColors::Ansi(AnsiColors::Red),
-                _ => DynColors::Ansi(AnsiColors::Yellow),
-            })
-        });
+        let initialized =
+            Cell::new(&initialized).with_style(Attr::ForegroundColor(match initialized.as_str() {
+                "true" => color::GREEN,
+                "false" => color::RED,
+                _ => color::YELLOW,
+            }));
+
         let sealed = get_vault_label(p, "vault-sealed");
-        let sealed = sealed.if_supports_color(Stdout, |text| {
-            text.color(match sealed.as_str() {
-                "true" => DynColors::Ansi(AnsiColors::Red),
-                "false" => DynColors::Ansi(AnsiColors::Green),
-                _ => DynColors::Ansi(AnsiColors::Yellow),
-            })
-        });
+        let sealed = Cell::new(&sealed).with_style(Attr::ForegroundColor(match sealed.as_str() {
+            "true" => color::RED,
+            "false" => color::GREEN,
+            _ => color::YELLOW,
+        }));
+
         let active = get_vault_label(p, "vault-active");
-        let active = active.if_supports_color(Stdout, |text| {
-            text.color(match active.as_str() {
-                "true" => DynColors::Ansi(AnsiColors::Green),
-                "false" => DynColors::Ansi(AnsiColors::White),
-                _ => DynColors::Ansi(AnsiColors::Yellow),
-            })
-        });
+        let active = Cell::new(&active).with_style(Attr::ForegroundColor(match active.as_str() {
+            "true" => color::GREEN,
+            "false" => color::WHITE,
+            _ => color::YELLOW,
+        }));
+
         let ready = {
             let mut ready = "unknown".to_string();
 
@@ -99,23 +97,21 @@ pub async fn construct_table(api: &Api<Pod>) -> anyhow::Result<Table> {
 
             ready
         };
-        let ready = ready.if_supports_color(Stdout, |text| {
-            text.color(match ready.as_str() {
-                "true" => DynColors::Ansi(AnsiColors::Green),
-                "false" => DynColors::Ansi(AnsiColors::White),
-                _ => DynColors::Ansi(AnsiColors::Yellow),
-            })
-        });
+        let ready = Cell::new(&ready).with_style(Attr::ForegroundColor(match ready.as_str() {
+            "true" => color::GREEN,
+            "false" => color::WHITE,
+            _ => color::YELLOW,
+        }));
 
-        table.add_row(row![
-            name,
-            status,
-            image,
+        table.add_row(Row::new(vec![
+            Cell::new(&name),
+            Cell::new(&status),
+            Cell::new(&image),
             initialized,
             sealed,
             active,
             ready,
-        ]);
+        ]));
     }
 
     Ok(table)
