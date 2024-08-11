@@ -2,8 +2,8 @@ use std::str::FromStr;
 
 use kube::{
     api::{entry::Entry, PostParams},
-    runtime::{conditions::is_pod_running, wait::Condition},
-    Api, Client,
+    runtime::conditions::is_deleted,
+    Api, Client, ResourceExt,
 };
 use secrecy::ExposeSecret;
 
@@ -516,13 +516,14 @@ async fn upgrade_pod_succeeds_with_external_unseal() {
 
     let pods_unseal = pods.clone();
     let name_unseal = name.clone();
+    let uid = pod.uid().unwrap();
     let init_unseal = init.clone();
 
     tokio::spawn(async move {
         kube::runtime::wait::await_condition(
             pods_unseal.api.clone(),
             &format!("{}-1", &name_unseal),
-            Condition::not(is_pod_running()),
+            is_deleted(&uid),
         )
         .await
         .unwrap();
