@@ -252,7 +252,7 @@ uri.as_str(),
                                 let event = WatchEvent::Modified(sts);
 
                                 list.push_str(&serde_json::to_string(&event).unwrap());
-                                list.push_str("\n");
+                                list.push('\n');
                             }
 
                             list
@@ -300,7 +300,7 @@ uri.as_str(),
                 mock_list_sts(
                     cloned_token,
                     &mut handle,
-                    &vec![vec![StatefulSetStatus {
+                    &[vec![StatefulSetStatus {
                         replicas: 1,
                         available_replicas: Some(1),
                         ready_replicas: Some(1),
@@ -342,7 +342,7 @@ uri.as_str(),
             mock_list_sts(
                 cloned_token,
                 &mut handle,
-                &vec![
+                &[
                     vec![StatefulSetStatus {
                         replicas: 1,
                         available_replicas: Some(0),
@@ -413,7 +413,7 @@ uri.as_str(),
             mock_list_sts(
                 cloned_token,
                 &mut handle,
-                &vec![
+                &[
                     vec![StatefulSetStatus {
                         replicas: 1,
                         available_replicas: Some(0),

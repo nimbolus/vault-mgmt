@@ -315,7 +315,7 @@ async fn upgrade_pod_succeeds_with_external_unseal() {
         init.root_token,
         false,
         false,
-        &vec![],
+        &[],
     )
     .await
     .unwrap();

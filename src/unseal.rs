@@ -315,7 +315,7 @@ mod tests {
         .await
         .unwrap();
 
-        let outcome = client.unseal(&vec![]).await;
+        let outcome = client.unseal(&[]).await;
 
         assert!(outcome.is_err());
     }
@@ -360,7 +360,7 @@ mod tests {
         .unwrap();
 
         let outcome = client
-            .unseal(&vec![
+            .unseal(&[
                 Secret::from_str("abc").unwrap(),
                 Secret::from_str("def").unwrap(),
                 Secret::from_str("ghi").unwrap(),
@@ -426,7 +426,7 @@ mod tests {
 
         let outcome = client
             .get_unseal_keys(
-                &uri.path_and_query().unwrap(),
+                uri.path_and_query().unwrap(),
                 Secret::new("token".to_string()),
             )
             .await;
@@ -451,7 +451,7 @@ mod tests {
 
         let outcome = client
             .get_unseal_keys(
-                &uri.path_and_query().unwrap(),
+                uri.path_and_query().unwrap(),
                 Secret::new("token".to_string()),
             )
             .await;

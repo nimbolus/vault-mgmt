@@ -14,7 +14,7 @@ pub async fn init_unseal_cluster(
     stss: &Api<StatefulSet>,
     name: &str,
 ) -> anyhow::Result<InitResult> {
-    kube::runtime::wait::await_condition(stss.clone(), &name, |obj: Option<&StatefulSet>| {
+    kube::runtime::wait::await_condition(stss.clone(), name, |obj: Option<&StatefulSet>| {
         if let Some(sts) = &obj {
             if let Some(status) = &sts.status {
                 return status.replicas == 3;
@@ -109,7 +109,7 @@ pub async fn init_unseal_cluster(
         pf.unseal(&init_result.keys).await?;
     }
 
-    kube::runtime::wait::await_condition(stss.clone(), &name, is_statefulset_ready()).await?;
+    kube::runtime::wait::await_condition(stss.clone(), name, is_statefulset_ready()).await?;
 
     Ok(init_result)
 }

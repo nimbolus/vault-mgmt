@@ -305,16 +305,16 @@ mod tests {
         let status = client.seal_status().await.unwrap();
 
         assert_eq!(status.type_, "shamir");
-        assert_eq!(status.initialized, false);
-        assert_eq!(status.sealed, true);
+        assert!(!status.initialized);
+        assert!(status.sealed);
         assert_eq!(status.t, 2);
         assert_eq!(status.n, 3);
         assert_eq!(status.progress, 0);
         assert_eq!(status.nonce, "");
         assert_eq!(status.version, "1.13.0");
         assert_eq!(status.build_date, "2023-03-01T14:58:13Z");
-        assert_eq!(status.migration, false);
-        assert_eq!(status.recovery_seal, false);
+        assert!(!status.migration);
+        assert!(!status.recovery_seal);
         assert_eq!(status.storage_type, "raft");
         assert_eq!(status.ha_enabled, None);
         assert_eq!(status.cluster_name, None);
@@ -341,18 +341,18 @@ mod tests {
         let status = client.seal_status().await.unwrap();
 
         assert_eq!(status.type_, "shamir");
-        assert_eq!(status.initialized, false);
-        assert_eq!(status.sealed, true);
+        assert!(!status.initialized);
+        assert!(status.sealed);
         assert_eq!(status.t, 2);
         assert_eq!(status.n, 3);
         assert_eq!(status.progress, 0);
         assert_eq!(status.nonce, "");
         assert_eq!(status.version, "1.13.0");
         assert_eq!(status.build_date, "2023-03-01T14:58:13Z");
-        assert_eq!(status.migration, false);
-        assert_eq!(status.recovery_seal, false);
+        assert!(!status.migration);
+        assert!(!status.recovery_seal);
         assert_eq!(status.storage_type, "raft");
-        assert_eq!(status.ha_enabled.unwrap(), true);
+        assert!(status.ha_enabled.unwrap());
         assert_eq!(status.cluster_name, None);
         assert_eq!(status.cluster_id, None);
         assert_eq!(status.active_time.unwrap(), "0001-01-01T00:00:00Z");
@@ -377,18 +377,18 @@ mod tests {
         let status = client.seal_status().await.unwrap();
 
         assert_eq!(status.type_, "shamir");
-        assert_eq!(status.initialized, true);
-        assert_eq!(status.sealed, false);
+        assert!(status.initialized);
+        assert!(!status.sealed);
         assert_eq!(status.t, 2);
         assert_eq!(status.n, 3);
         assert_eq!(status.progress, 0);
         assert_eq!(status.nonce, "");
         assert_eq!(status.version, "1.13.0");
         assert_eq!(status.build_date, "2023-03-01T14:58:13Z");
-        assert_eq!(status.migration, false);
-        assert_eq!(status.recovery_seal, false);
+        assert!(!status.migration);
+        assert!(!status.recovery_seal);
         assert_eq!(status.storage_type, "raft");
-        assert_eq!(status.ha_enabled.unwrap(), true);
+        assert!(status.ha_enabled.unwrap());
         assert_eq!(status.cluster_name.unwrap(), "vault-cluster-211d673a");
         assert_eq!(
             status.cluster_id.unwrap(),
@@ -422,7 +422,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(status.initialized, true);
+        assert!(status.initialized);
     }
 
     fn raft_configuration() -> serde_json::Value {
@@ -508,7 +508,7 @@ mod tests {
 
     #[tokio::test]
     async fn getting_raft_configuration_works() {
-        let mock_server = mock_raft_configuration(&vec![raft_configuration()]).await;
+        let mock_server = mock_raft_configuration(&[raft_configuration()]).await;
 
         let mut client = HttpForwarderService::http(
             tokio::net::TcpStream::connect(mock_server.uri().strip_prefix("http://").unwrap())
@@ -525,7 +525,7 @@ mod tests {
 
         assert_eq!(config.request_id, "7f6fc909-bb7f-e48c-d850-0ad8a22cb434");
         assert_eq!(config.lease_id, "");
-        assert_eq!(config.renewable, false);
+        assert!(!config.renewable);
         assert_eq!(config.lease_duration, 0);
         assert_eq!(config.data.config.index, 0);
         assert_eq!(config.data.config.servers.len(), 3);
@@ -537,9 +537,9 @@ mod tests {
             config.data.config.servers[0].address,
             "vault-0.vault-internal:8201"
         );
-        assert_eq!(config.data.config.servers[0].leader, true);
+        assert!(config.data.config.servers[0].leader);
         assert_eq!(config.data.config.servers[0].protocol_version, "3");
-        assert_eq!(config.data.config.servers[0].voter, true);
+        assert!(config.data.config.servers[0].voter);
         assert_eq!(
             config.data.config.servers[1].node_id,
             "04ffa935-e1c2-e891-a9e9-426bf1a6c93d"
@@ -548,9 +548,9 @@ mod tests {
             config.data.config.servers[1].address,
             "vault-1.vault-internal:8201"
         );
-        assert_eq!(config.data.config.servers[1].leader, false);
+        assert!(!config.data.config.servers[1].leader);
         assert_eq!(config.data.config.servers[1].protocol_version, "3");
-        assert_eq!(config.data.config.servers[1].voter, true);
+        assert!(config.data.config.servers[1].voter);
         assert_eq!(
             config.data.config.servers[2].node_id,
             "124bef00-64ec-59de-1366-7050edfb5c49"
@@ -559,9 +559,9 @@ mod tests {
             config.data.config.servers[2].address,
             "vault-2.vault-internal:8201"
         );
-        assert_eq!(config.data.config.servers[2].leader, false);
+        assert!(!config.data.config.servers[2].leader);
         assert_eq!(config.data.config.servers[2].protocol_version, "3");
-        assert_eq!(config.data.config.servers[2].voter, true);
+        assert!(config.data.config.servers[2].voter);
 
         assert_eq!(config.wrap_info, None);
         assert_eq!(config.warnings, None);
@@ -570,7 +570,7 @@ mod tests {
 
     #[tokio::test]
     async fn waiting_for_raft_configuration_works() {
-        let mock_server = mock_raft_configuration(&vec![raft_configuration()]).await;
+        let mock_server = mock_raft_configuration(&[raft_configuration()]).await;
 
         let mut client = HttpForwarderService::http(
             tokio::net::TcpStream::connect(mock_server.uri().strip_prefix("http://").unwrap())
@@ -589,12 +589,12 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(config.data.config.servers[0].leader, true);
+        assert!(config.data.config.servers[0].leader);
     }
 
     #[tokio::test]
     async fn waiting_for_raft_configuration_having_leader_works() {
-        let mock_server = mock_raft_configuration(&vec![
+        let mock_server = mock_raft_configuration(&[
             raft_configuration_no_leader(),
             raft_configuration_no_leader(),
             raft_configuration(),
@@ -618,12 +618,12 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(config.data.config.servers[0].leader, true);
+        assert!(config.data.config.servers[0].leader);
     }
 
     #[tokio::test]
     async fn waiting_for_raft_configuration_having_all_voters_works() {
-        let mock_server = mock_raft_configuration(&vec![
+        let mock_server = mock_raft_configuration(&[
             raft_configuration_no_voter(),
             raft_configuration_single_non_voter(),
             raft_configuration(),
