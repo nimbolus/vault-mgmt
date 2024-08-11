@@ -36,6 +36,8 @@ pub async fn install_chart(
 ) -> anyhow::Result<String> {
     let helm = which::which("helm")?;
 
+    let fullname_override = format!("fullnameOverride={}", name);
+
     let mut args = vec![
         "upgrade",
         "--install",
@@ -45,6 +47,8 @@ pub async fn install_chart(
         namespace,
         "-f",
         "-",
+        "--set",
+        &fullname_override,
     ];
 
     let vers;

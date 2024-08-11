@@ -1,3 +1,5 @@
+fullnameOverride: "" # set by tests
+
 server:
   affinity: ""
   ha:
@@ -33,3 +35,5 @@ server:
   volumeMounts:
     - name: data
       mountPath: /vault/data
+injector:
+  enabled: false
