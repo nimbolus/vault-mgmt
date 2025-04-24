@@ -101,9 +101,13 @@ where
 {
     let mut root_cert_store = RootCertStore::empty();
 
-    for cert in rustls_native_certs::load_native_certs()
-        .map_err(|e| anyhow::anyhow!("could not load platform certs: {}", e))?
-    {
+    let certs = rustls_native_certs::load_native_certs();
+
+    if let Some(err) = certs.errors.first() {
+        return Err(anyhow::anyhow!("could not load platform certs: {}", err));
+    }
+
+    for cert in certs.certs {
         root_cert_store.add(cert).unwrap();
     }
 
