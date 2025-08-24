@@ -1,7 +1,7 @@
 # vault-mgmt
 
 ## Requirements
-+ Vault is running in Kubernetes.
++ Vault (or OpenBao, specify `--flavor openbao`) is running in Kubernetes.
 + [Service Registration](https://developer.hashicorp.com/vault/docs/configuration/service-registration/kubernetes) is configured
 
 ## Features
