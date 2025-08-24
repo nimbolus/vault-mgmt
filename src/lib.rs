@@ -13,9 +13,9 @@ mod upgrade;
 mod version;
 mod wait;
 
-pub use crate::http::*;
 pub use exec::*;
 pub use helpers::*;
+pub use http::*;
 pub use init::*;
 pub use show::*;
 pub use status::*;

@@ -58,7 +58,8 @@ async fn upgrade_pod_succeeds_if_already_current_with_force_upgrade() {
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]
 async fn upgrade_pod_succeeds_if_outdated_and_standby() {
-    let (namespace, name, _, stss, init, pods) = setup("upgrade-outdated", VAULT_VERSION_OLD).await;
+    let (namespace, name, _, stss, init, pods) =
+        setup("upgrade-outdated-stby", VAULT_VERSION_OLD).await;
 
     match stss.entry(&name).await.unwrap() {
         Entry::Occupied(sts) => {
@@ -119,7 +120,8 @@ async fn upgrade_pod_succeeds_if_outdated_and_standby() {
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]
 async fn upgrade_pod_succeeds_if_outdated_and_active() {
-    let (namespace, name, _, stss, init, pods) = setup("upgrade-outdated", VAULT_VERSION_OLD).await;
+    let (namespace, name, _, stss, init, pods) =
+        setup("upgrade-outdated-act", VAULT_VERSION_OLD).await;
 
     match stss.entry(&name).await.unwrap() {
         Entry::Occupied(sts) => {
