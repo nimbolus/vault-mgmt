@@ -1,6 +1,8 @@
 use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
 use kube::runtime::wait::Condition;
 
+use crate::Flavor;
+
 /// Returns true if the StatefulSet is considered ready.
 /// This means that all replicas are available and ready.
 #[must_use]
@@ -38,7 +40,7 @@ pub fn is_statefulset_updated() -> impl Condition<StatefulSet> {
 
 /// Returns true if the StatefulSet template is using the given version.
 #[must_use]
-pub fn statefulset_has_version(version: String) -> impl Condition<StatefulSet> {
+pub fn statefulset_has_version(version: String, flavor: Flavor) -> impl Condition<StatefulSet> {
     move |obj: Option<&StatefulSet>| {
         if let Some(sts) = &obj {
             if let Some(spec) = &sts.spec {
@@ -47,7 +49,7 @@ pub fn statefulset_has_version(version: String) -> impl Condition<StatefulSet> {
                         .containers
                         .iter()
                         .filter_map(|c| {
-                            if c.name == "vault" {
+                            if c.name == flavor.to_string() {
                                 c.image.clone()
                             } else {
                                 None
@@ -79,13 +81,15 @@ pub fn is_pod_ready() -> impl Condition<Pod> {
 }
 
 /// Returns true if the Pod has the seal status label.
-/// This is determined by looking if the `vault-sealed` label exists.
+/// This is determined by looking if the `<flavor>-sealed` label exists.
 #[must_use]
-pub fn is_pod_exporting_seal_status() -> impl Condition<Pod> {
-    |obj: Option<&Pod>| {
+pub fn is_pod_exporting_seal_status(flavor: Flavor) -> impl Condition<Pod> {
+    move |obj: Option<&Pod>| {
         if let Some(pod) = &obj {
             if let Some(labels) = &pod.metadata.labels {
-                return labels.get("vault-sealed").is_some();
+                return labels
+                    .get(&format!("{}-sealed", flavor))
+                    .is_some();
             }
         }
         false
@@ -93,20 +97,20 @@ pub fn is_pod_exporting_seal_status() -> impl Condition<Pod> {
 }
 
 /// Returns true if the Pod is unsealed.
-/// This is determined by looking at the `vault-sealed` label.
+/// This is determined by looking at the `<flavor>-sealed` label.
 #[must_use]
-pub fn is_pod_unsealed() -> impl Condition<Pod> {
-    Condition::not(is_pod_sealed())
+pub fn is_pod_unsealed(flavor: Flavor) -> impl Condition<Pod> {
+    Condition::not(is_pod_sealed(flavor))
 }
 
 /// Returns true if the Pod is sealed.
-/// This is determined by looking at the `vault-sealed` label.
+/// This is determined by looking at the `<flavor>-sealed` label.
 #[must_use]
-pub fn is_pod_sealed() -> impl Condition<Pod> {
-    |obj: Option<&Pod>| {
+pub fn is_pod_sealed(flavor: Flavor) -> impl Condition<Pod> {
+    move |obj: Option<&Pod>| {
         if let Some(pod) = &obj {
             if let Some(labels) = &pod.metadata.labels {
-                if let Some(sealed) = labels.get("vault-sealed") {
+                if let Some(sealed) = labels.get(&format!("{}-sealed", flavor)) {
                     return sealed.as_str() == "true";
                 }
             }
@@ -116,13 +120,13 @@ pub fn is_pod_sealed() -> impl Condition<Pod> {
 }
 
 /// Returns true if the Pod is the active replica.
-/// This is determined by looking at the `vault-active` label.
+/// This is determined by looking at the `<flavor>-active` label.
 #[must_use]
-pub fn is_pod_active() -> impl Condition<Pod> {
-    |obj: Option<&Pod>| {
+pub fn is_pod_active(flavor: Flavor) -> impl Condition<Pod> {
+    move |obj: Option<&Pod>| {
         if let Some(pod) = &obj {
             if let Some(labels) = &pod.metadata.labels {
-                if let Some(active) = labels.get("vault-active") {
+                if let Some(active) = labels.get(&format!("{}-active", flavor)) {
                     return active.as_str() == "true";
                 }
             }
@@ -132,10 +136,10 @@ pub fn is_pod_active() -> impl Condition<Pod> {
 }
 
 /// Returns true if the Pod is a standby replica.
-/// This is determined by looking at the `vault-active` label.
+/// This is determined by looking at the `<flavor>-active` label.
 #[must_use]
-pub fn is_pod_standby() -> impl Condition<Pod> {
-    Condition::not(is_pod_active())
+pub fn is_pod_standby(flavor: Flavor) -> impl Condition<Pod> {
+    Condition::not(is_pod_active(flavor))
 }
 
 #[cfg(test)]

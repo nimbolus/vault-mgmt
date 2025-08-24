@@ -2,10 +2,10 @@ use k8s_openapi::api::core::v1::Pod;
 use kube::api::Api;
 use prettytable::{color, Attr, Cell, Row, Table};
 
-use crate::list_vault_pods;
+use crate::{list_vault_pods, Flavor};
 
 #[tracing::instrument(skip_all)]
-pub async fn construct_table(api: &Api<Pod>) -> anyhow::Result<Table> {
+pub async fn construct_table(api: &Api<Pod>, flavor: Flavor) -> anyhow::Result<Table> {
     let mut table = Table::new();
     table.set_titles(row![
         "NAME",
@@ -17,7 +17,7 @@ pub async fn construct_table(api: &Api<Pod>) -> anyhow::Result<Table> {
         "READY",
     ]);
 
-    let pods = api.list(&list_vault_pods()).await?;
+    let pods = api.list(&list_vault_pods(&flavor.to_string())).await?;
 
     let get_vault_label = |pod: &Pod, label: &str| match pod.metadata.labels {
         Some(ref labels) => labels
@@ -51,7 +51,7 @@ pub async fn construct_table(api: &Api<Pod>) -> anyhow::Result<Table> {
             .clone()
             .ok_or(anyhow::anyhow!("container does not have an image"))?;
 
-        let initialized = get_vault_label(p, "vault-initialized");
+        let initialized = get_vault_label(p, &format!("{}-initialized", flavor));
         let initialized =
             Cell::new(&initialized).with_style(Attr::ForegroundColor(match initialized.as_str() {
                 "true" => color::GREEN,
@@ -59,14 +59,14 @@ pub async fn construct_table(api: &Api<Pod>) -> anyhow::Result<Table> {
                 _ => color::YELLOW,
             }));
 
-        let sealed = get_vault_label(p, "vault-sealed");
+        let sealed = get_vault_label(p, &format!("{}-sealed", flavor));
         let sealed = Cell::new(&sealed).with_style(Attr::ForegroundColor(match sealed.as_str() {
             "true" => color::RED,
             "false" => color::GREEN,
             _ => color::YELLOW,
         }));
 
-        let active = get_vault_label(p, "vault-active");
+        let active = get_vault_label(p, &format!("{}-active", flavor));
         let active = Cell::new(&active).with_style(Attr::ForegroundColor(match active.as_str() {
             "true" => color::GREEN,
             "false" => color::WHITE,

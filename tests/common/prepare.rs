@@ -57,9 +57,9 @@ pub async fn init_unseal_cluster(
                 false
             }
 
-            if !has_label(pod, "vault-initialized", None)
-                || !has_label(pod, "vault-sealed", None)
-                || !has_label(pod, "vault-active", None)
+            if !has_label(pod, "openbao-initialized", None)
+                || !has_label(pod, "openbao-sealed", None)
+                || !has_label(pod, "openbao-active", None)
             {
                 return false;
             }
@@ -83,33 +83,57 @@ pub async fn init_unseal_cluster(
 
     let first = format!("{}-0", &name);
 
-    let mut pf = PodApi::new(pods.clone(), false, "".to_string())
-        .http(&first, VAULT_PORT)
-        .await
-        .unwrap();
+    let mut pf = PodApi::new(
+        pods.clone(),
+        false,
+        "".to_string(),
+        vault_mgmt_lib::Flavor::OpenBao,
+    )
+    .http(&first, VAULT_PORT)
+    .await
+    .unwrap();
 
     // initialize vault
     let init_result = pf.init(InitRequest::default()).await?;
 
+    println!("init_result: {:#?}", init_result);
+
     pf.await_seal_status(is_seal_status_initialized()).await?;
+
+    println!("seal status initialized");
 
     // unseal vault
     pf.unseal(&init_result.keys).await?;
 
+    println!("first pod unsealed");
+
     kube::runtime::wait::await_condition(pods.clone(), &first, is_pod_ready()).await?;
+
+    println!("first pod ready");
 
     // unseal other pods
     for pod in [1, 2] {
-        let mut pf = PodApi::new(pods.clone(), false, "".to_string())
-            .http(&format!("{}-{}", &name, pod), VAULT_PORT)
-            .await?;
+        let mut pf = PodApi::new(
+            pods.clone(),
+            false,
+            "".to_string(),
+            vault_mgmt_lib::Flavor::OpenBao,
+        )
+        .http(&format!("{}-{}", &name, pod), VAULT_PORT)
+        .await?;
 
         pf.await_seal_status(is_seal_status_initialized()).await?;
 
+        println!("pod {} seal status initialized", pod);
+
         pf.unseal(&init_result.keys).await?;
+
+        println!("pod {} unsealed", pod);
     }
 
     kube::runtime::wait::await_condition(stss.clone(), name, is_statefulset_ready()).await?;
+
+    println!("statefulset {} ready", name);
 
     Ok(init_result)
 }

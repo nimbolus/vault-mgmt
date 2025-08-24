@@ -6,7 +6,7 @@ use kube::Api;
 use secrecy::Secret;
 use tracing::*;
 
-use crate::{init_request, raft_join_request, BytesBody, HttpRequest, PodApi, VAULT_PORT};
+use crate::{init_request, raft_join_request, BytesBody, Flavor, HttpRequest, PodApi, VAULT_PORT};
 
 #[derive(Debug, serde::Serialize)]
 pub struct InitRequest {
@@ -105,12 +105,17 @@ where
 }
 
 #[tracing::instrument(skip_all)]
-pub async fn init(domain: String, api: &Api<Pod>, pod_name: &str) -> anyhow::Result<InitResult> {
+pub async fn init(
+    domain: String,
+    api: &Api<Pod>,
+    flavor: Flavor,
+    pod_name: &str,
+) -> anyhow::Result<InitResult> {
     let pod = api.get(pod_name).await?;
 
     info!("initializing: {}", pod_name);
 
-    let pods = PodApi::new(api.clone(), true, domain);
+    let pods = PodApi::new(api.clone(), true, domain, flavor);
     let mut pf = pods
         .http(
             pod.metadata
@@ -158,6 +163,7 @@ pub async fn init(domain: String, api: &Api<Pod>, pod_name: &str) -> anyhow::Res
 pub async fn raft_join(
     domain: String,
     api: &Api<Pod>,
+    flavor: Flavor,
     pod_name: &str,
     join_to: &str,
 ) -> anyhow::Result<()> {
@@ -172,7 +178,7 @@ pub async fn raft_join(
         join_to,
     );
 
-    let pods = PodApi::new(api.clone(), true, domain);
+    let pods = PodApi::new(api.clone(), true, domain, flavor);
     let mut pf = pods
         .http(
             pod.metadata

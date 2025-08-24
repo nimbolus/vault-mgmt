@@ -6,7 +6,7 @@ use secrecy::{ExposeSecret, Secret};
 use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
 
-use crate::{list_vault_pods, LABEL_KEY_VAULT_ACTIVE, LABEL_KEY_VAULT_SEALED};
+use crate::{list_vault_pods, Flavor};
 
 #[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ExecIn {
@@ -25,11 +25,11 @@ impl std::fmt::Display for ExecIn {
 }
 
 impl ExecIn {
-    pub fn to_label_selector(&self) -> String {
+    pub fn to_label_selector(&self, flavor: &str) -> String {
         match self {
-            ExecIn::Active => format!("{}=true", LABEL_KEY_VAULT_ACTIVE),
-            ExecIn::Standby => format!("{}=false", LABEL_KEY_VAULT_ACTIVE),
-            ExecIn::Sealed => format!("{}=true", LABEL_KEY_VAULT_SEALED),
+            ExecIn::Active => format!("{}=true", &format!("{}-active", flavor)),
+            ExecIn::Standby => format!("{}=false", &format!("{}-active", flavor)),
+            ExecIn::Sealed => format!("{}=true", &format!("{}-sealed", flavor)),
         }
     }
 }
@@ -39,10 +39,14 @@ pub async fn exec(
     api: &Api<Pod>,
     cmd: String,
     exec_in: ExecIn,
+    flavor: Flavor,
     env: HashMap<String, Secret<String>>,
 ) -> anyhow::Result<()> {
     let pods = api
-        .list(&list_vault_pods().labels(&exec_in.to_label_selector()))
+        .list(
+            &list_vault_pods(&flavor.to_string())
+                .labels(&exec_in.to_label_selector(&flavor.to_string())),
+        )
         .await?;
     let pod = pods
         .items

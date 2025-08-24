@@ -1,5 +1,6 @@
 use std::process::Stdio;
 use tokio::{io::AsyncWriteExt, process::Command};
+use vault_mgmt_lib::Flavor;
 
 pub async fn add_repo() -> anyhow::Result<String> {
     let helm = which::which("helm")?;
@@ -8,8 +9,8 @@ pub async fn add_repo() -> anyhow::Result<String> {
         .args([
             "repo",
             "add",
-            "hashicorp",
-            "https://helm.releases.hashicorp.com",
+            "openbao",
+            "https://openbao.github.io/openbao-helm",
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -33,6 +34,8 @@ pub async fn install_chart(
     namespace: &str,
     name: &str,
     version: Option<&str>,
+    flavor: Flavor,
+    values: String,
 ) -> anyhow::Result<String> {
     let helm = which::which("helm")?;
 
@@ -42,7 +45,10 @@ pub async fn install_chart(
         "upgrade",
         "--install",
         name,
-        "hashicorp/vault",
+        match flavor {
+            Flavor::OpenBao => "openbao/openbao",
+            Flavor::Vault => "hashicorp/vault",
+        },
         "--namespace",
         namespace,
         "-f",
@@ -67,11 +73,9 @@ pub async fn install_chart(
         .spawn()?;
 
     let mut stdin = cmd.stdin.take().expect("failed to take stdin");
+
     tokio::spawn(async move {
-        stdin
-            .write_all(include_str!("helm/values.yaml").as_bytes())
-            .await
-            .unwrap();
+        stdin.write_all(values.as_bytes()).await.unwrap();
     });
 
     let output = cmd.wait_with_output().await?;

@@ -10,6 +10,7 @@ use std::io;
 use std::str::FromStr;
 use tokio::task::spawn_blocking;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
+use vault_mgmt_lib::Flavor;
 
 use vault_mgmt_lib::{
     construct_table, is_statefulset_ready, GetUnsealKeys, GetUnsealKeysFromVault, StepDown,
@@ -47,6 +48,17 @@ struct Cli {
     /// Do not use TLS for communication with vault
     #[arg(long)]
     no_tls: bool,
+
+    /// Server Flavor
+    #[arg(
+        short = 'f',
+        long,
+        default_value = "vault",
+        value_parser = clap::builder::PossibleValuesParser::new(
+            ["openbao", "vault"]
+        ).map(|s| Flavor::from_str(&s).expect("invalid flavor")),
+    )]
+    flavor: Flavor,
 
     /// Subcommand to run
     #[command(subcommand)]
@@ -188,7 +200,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Show {} => {
             let api = setup_api(&cli.namespace).await?;
-            let table = construct_table(&api).await?;
+            let table = construct_table(&api, cli.flavor).await?;
 
             table.printstd();
         }
@@ -200,18 +212,21 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let api = setup_api(&cli.namespace).await?;
             let env = collect_env(env, env_keys)?;
-            exec(&api, cmd.join(" "), exec_in, env).await?;
+            exec(&api, cmd.join(" "), exec_in, cli.flavor, env).await?;
         }
         Commands::StepDown { token } => {
             let api = setup_api(&cli.namespace).await?;
             let active = api
-                .list(&list_vault_pods().labels(&ExecIn::Active.to_label_selector()))
+                .list(
+                    &list_vault_pods(&cli.flavor.to_string())
+                        .labels(&ExecIn::Active.to_label_selector(&cli.flavor.to_string())),
+                )
                 .await?;
             let active = active.iter().next().ok_or(anyhow::anyhow!(
                 "no active vault pod found. is vault sealed?"
             ))?;
 
-            PodApi::new(api, !cli.no_tls, cli.domain)
+            PodApi::new(api, !cli.no_tls, cli.domain, cli.flavor)
                 .http(
                     active
                         .metadata
@@ -240,7 +255,7 @@ async fn main() -> anyhow::Result<()> {
             key_cmd,
         } => {
             let api = setup_api(&cli.namespace).await?;
-            let sealed = list_sealed_pods(&api).await?;
+            let sealed = list_sealed_pods(&api, &cli.flavor.to_string()).await?;
 
             if sealed.is_empty() {
                 return Ok(());
@@ -277,7 +292,7 @@ async fn main() -> anyhow::Result<()> {
             }
 
             for pod in sealed.iter() {
-                PodApi::new(api.clone(), !cli.no_tls, cli.domain.clone())
+                PodApi::new(api.clone(), !cli.no_tls, cli.domain.clone(), cli.flavor)
                     .http(
                         pod.metadata
                             .name
@@ -333,10 +348,10 @@ async fn main() -> anyhow::Result<()> {
 
             let sts = stss.get(&cli.statefulset).await?;
 
-            StatefulSetApi::from(stss.clone())
+            StatefulSetApi::new(stss.clone(), cli.flavor)
                 .upgrade(
                     sts.clone(),
-                    &PodApi::new(pods.clone(), !cli.no_tls, cli.domain),
+                    &PodApi::new(pods.clone(), !cli.no_tls, cli.domain, cli.flavor),
                     token,
                     !do_not_unseal,
                     force_upgrade,

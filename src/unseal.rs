@@ -28,9 +28,9 @@ pub async fn get_unseal_keys(key_cmd: &str) -> anyhow::Result<Vec<Secret<String>
 }
 
 /// List all pods that are sealed
-pub async fn list_sealed_pods(api: &Api<Pod>) -> anyhow::Result<Vec<Pod>> {
+pub async fn list_sealed_pods(api: &Api<Pod>, flavor: &str) -> anyhow::Result<Vec<Pod>> {
     let pods = api
-        .list(&list_vault_pods().labels(&ExecIn::Sealed.to_label_selector()))
+        .list(&list_vault_pods(flavor).labels(&ExecIn::Sealed.to_label_selector(flavor)))
         .await?;
 
     Ok(pods.items)
@@ -295,7 +295,7 @@ mod tests {
     async fn get_sealed_pods_returns_sealed_pods() {
         let (api, service, cancel) = setup().await;
 
-        let pods = list_sealed_pods(&api).await.unwrap();
+        let pods = list_sealed_pods(&api, "vault").await.unwrap();
 
         assert_eq!(pods.len(), 3);
 

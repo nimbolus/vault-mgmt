@@ -49,13 +49,17 @@ impl PodApi {
         // if Pod version is outdated (or upgrade is forced)
         if !Self::is_current(&pod, target)? || force_upgrade {
             // if Pod is active
-            if is_active(&pod)? {
+            if is_active(&pod, &self.flavor.to_string())? {
                 // Step down active pod
                 self.http(name, VAULT_PORT).await?.step_down(token).await?;
 
                 // Wait for other pod to take over
-                kube::runtime::wait::await_condition(self.api.clone(), name, is_pod_standby())
-                    .await?;
+                kube::runtime::wait::await_condition(
+                    self.api.clone(),
+                    name,
+                    is_pod_standby(self.flavor),
+                )
+                .await?;
             }
 
             // Delete pod
@@ -79,7 +83,7 @@ impl PodApi {
         kube::runtime::wait::await_condition(
             self.api.clone(),
             name,
-            is_pod_exporting_seal_status(),
+            is_pod_exporting_seal_status(self.flavor),
         )
         .await?;
 
@@ -88,7 +92,7 @@ impl PodApi {
 
         if Self::is_current(&pod, target)? {
             // Pod is sealed
-            if is_sealed(&pod)? {
+            if is_sealed(&pod, &self.flavor.to_string())? {
                 if should_unseal {
                     let mut pf = Retry::spawn(
                         ExponentialBackoff::from_millis(50).map(jitter).take(5),
@@ -123,7 +127,12 @@ impl PodApi {
                 }
             }
             // Wait for pod to be unsealed
-            kube::runtime::wait::await_condition(self.api.clone(), name, is_pod_unsealed()).await?;
+            kube::runtime::wait::await_condition(
+                self.api.clone(),
+                name,
+                is_pod_unsealed(self.flavor),
+            )
+            .await?;
             // Wait for pod to be ready
             kube::runtime::wait::await_condition(self.api.clone(), name, is_pod_ready()).await?;
         }
@@ -171,7 +180,10 @@ impl StatefulSetApi {
 
         let standby = pods
             .api
-            .list(&list_vault_pods().labels(&ExecIn::Standby.to_label_selector()))
+            .list(
+                &list_vault_pods(&self.flavor.to_string())
+                    .labels(&ExecIn::Standby.to_label_selector(&self.flavor.to_string())),
+            )
             .await?;
 
         if standby.items.is_empty() {
@@ -181,7 +193,10 @@ impl StatefulSetApi {
 
         let active = pods
             .api
-            .list(&list_vault_pods().labels(&ExecIn::Active.to_label_selector()))
+            .list(
+                &list_vault_pods(&self.flavor.to_string())
+                    .labels(&ExecIn::Active.to_label_selector(&self.flavor.to_string())),
+            )
             .await?;
 
         if active.items.is_empty() {
@@ -382,7 +397,12 @@ mod tests {
 
         let (api, service, cancel) = setup().await;
 
-        let pods = PodApi::new(api, false, "vault-mgmt-e2e".to_string());
+        let pods = PodApi::new(
+            api,
+            false,
+            "vault-mgmt-e2e".to_string(),
+            crate::Flavor::Vault,
+        );
 
         let pod = pods.api.get("vault-mgmt-e2e-2274-1").await.unwrap();
 
@@ -412,7 +432,12 @@ mod tests {
 
         let (api, service, cancel) = setup().await;
 
-        let pods = PodApi::new(api, false, "vault-mgmt-e2e".to_string());
+        let pods = PodApi::new(
+            api,
+            false,
+            "vault-mgmt-e2e".to_string(),
+            crate::Flavor::Vault,
+        );
 
         let pod = pods.api.get("vault-mgmt-e2e-2274-1").await.unwrap();
 

@@ -6,14 +6,13 @@ use kube::{
     ResourceExt,
 };
 
-use vault_mgmt_lib::{is_pod_sealed, Unseal, VaultVersion, VAULT_PORT};
+use vault_mgmt_lib::{is_pod_sealed, Flavor, Unseal, VaultVersion, VAULT_PORT};
 
-use crate::setup::{setup, teardown, VAULT_IMAGE_NAME, VAULT_VERSION_CURRENT, VAULT_VERSION_OLD};
+use super::setup::{setup, teardown};
 
-#[ignore = "needs a running kubernetes cluster and the helm cli"]
-#[tokio::test]
-async fn upgrade_pod_succeeds_if_already_current() {
-    let (namespace, name, _, stss, init, pods) = setup("upgrade-noop", VAULT_VERSION_CURRENT).await;
+pub async fn upgrade_pod_succeeds_if_already_current(version_current: &str, flavor: Flavor) {
+    let (namespace, name, _, stss, init, pods) =
+        setup(flavor, "upgrade-noop", version_current).await;
 
     let sts = stss.get(&name).await.unwrap();
     let pod = pods.api.get(&format!("{}-0", name)).await.unwrap();
@@ -32,11 +31,12 @@ async fn upgrade_pod_succeeds_if_already_current() {
     teardown(&namespace, &name).await;
 }
 
-#[ignore = "needs a running kubernetes cluster and the helm cli"]
-#[tokio::test]
-async fn upgrade_pod_succeeds_if_already_current_with_force_upgrade() {
+pub async fn upgrade_pod_succeeds_if_already_current_with_force_upgrade(
+    version_current: &str,
+    flavor: Flavor,
+) {
     let (namespace, name, _, stss, init, pods) =
-        setup("upgrade-force", VAULT_VERSION_CURRENT).await;
+        setup(flavor, "upgrade-force", version_current).await;
 
     let sts = stss.get(&name).await.unwrap();
     let pod = pods.api.get(&format!("{}-1", name)).await.unwrap();
@@ -55,11 +55,14 @@ async fn upgrade_pod_succeeds_if_already_current_with_force_upgrade() {
     teardown(&namespace, &name).await;
 }
 
-#[ignore = "needs a running kubernetes cluster and the helm cli"]
-#[tokio::test]
-async fn upgrade_pod_succeeds_if_outdated_and_standby() {
+pub async fn upgrade_pod_succeeds_if_outdated_and_standby(
+    version_old: &str,
+    version_current: &str,
+    image_name: &str,
+    flavor: vault_mgmt_lib::Flavor,
+) {
     let (namespace, name, _, stss, init, pods) =
-        setup("upgrade-outdated-stby", VAULT_VERSION_OLD).await;
+        setup(flavor, "upgrade-outdated-stby", version_old).await;
 
     match stss.entry(&name).await.unwrap() {
         Entry::Occupied(sts) => {
@@ -75,10 +78,9 @@ async fn upgrade_pod_succeeds_if_outdated_and_standby() {
                     .containers
                     .iter_mut()
                 {
-                    if container.name == "vault" {
-                        container.image = Some(
-                            format!("{}:{}", VAULT_IMAGE_NAME, VAULT_VERSION_CURRENT).to_string(),
-                        );
+                    if container.name == flavor.container_name() {
+                        container.image =
+                            Some(format!("{}:{}", image_name, version_current).to_string());
                     }
                 }
             })
@@ -94,7 +96,7 @@ async fn upgrade_pod_succeeds_if_outdated_and_standby() {
 
     assert_eq!(
         VaultVersion::try_from(&pod).unwrap(),
-        VaultVersion::from_str(VAULT_VERSION_OLD).unwrap()
+        VaultVersion::from_str(version_old).unwrap()
     );
 
     pods.upgrade(
@@ -111,17 +113,20 @@ async fn upgrade_pod_succeeds_if_outdated_and_standby() {
     let pod = pods.api.get(&format!("{}-1", name)).await.unwrap();
     assert_eq!(
         VaultVersion::try_from(&pod).unwrap(),
-        VaultVersion::from_str(VAULT_VERSION_CURRENT).unwrap()
+        VaultVersion::from_str(version_current).unwrap()
     );
 
     teardown(&namespace, &name).await;
 }
 
-#[ignore = "needs a running kubernetes cluster and the helm cli"]
-#[tokio::test]
-async fn upgrade_pod_succeeds_if_outdated_and_active() {
+pub async fn upgrade_pod_succeeds_if_outdated_and_active(
+    version_old: &str,
+    version_current: &str,
+    image_name: &str,
+    flavor: vault_mgmt_lib::Flavor,
+) {
     let (namespace, name, _, stss, init, pods) =
-        setup("upgrade-outdated-act", VAULT_VERSION_OLD).await;
+        setup(flavor, "upgrade-outdated-act", version_old).await;
 
     match stss.entry(&name).await.unwrap() {
         Entry::Occupied(sts) => {
@@ -137,10 +142,9 @@ async fn upgrade_pod_succeeds_if_outdated_and_active() {
                     .containers
                     .iter_mut()
                 {
-                    if container.name == "vault" {
-                        container.image = Some(
-                            format!("{}:{}", VAULT_IMAGE_NAME, VAULT_VERSION_CURRENT).to_string(),
-                        );
+                    if container.name == flavor.container_name() {
+                        container.image =
+                            Some(format!("{}:{}", image_name, version_current).to_string());
                     }
                 }
             })
@@ -156,7 +160,7 @@ async fn upgrade_pod_succeeds_if_outdated_and_active() {
 
     assert_eq!(
         VaultVersion::try_from(&pod).unwrap(),
-        VaultVersion::from_str(VAULT_VERSION_OLD).unwrap()
+        VaultVersion::from_str(version_old).unwrap()
     );
 
     pods.upgrade(
@@ -173,17 +177,20 @@ async fn upgrade_pod_succeeds_if_outdated_and_active() {
     let pod = pods.api.get(&format!("{}-0", name)).await.unwrap();
     assert_eq!(
         VaultVersion::try_from(&pod).unwrap(),
-        VaultVersion::from_str(VAULT_VERSION_CURRENT).unwrap()
+        VaultVersion::from_str(version_current).unwrap()
     );
 
     teardown(&namespace, &name).await;
 }
 
-#[ignore = "needs a running kubernetes cluster and the helm cli"]
-#[tokio::test]
-async fn upgrade_pod_succeeds_fails_with_missing_external_unseal() {
+pub async fn upgrade_pod_succeeds_fails_with_missing_external_unseal(
+    version_old: &str,
+    version_current: &str,
+    image_name: &str,
+    flavor: vault_mgmt_lib::Flavor,
+) {
     let (namespace, name, _, stss, init, pods) =
-        setup("upgrade-miss-ext-unseal", VAULT_VERSION_OLD).await;
+        setup(flavor, "upgrade-miss-ext-unseal", version_old).await;
 
     match stss.entry(&name).await.unwrap() {
         Entry::Occupied(sts) => {
@@ -199,10 +206,9 @@ async fn upgrade_pod_succeeds_fails_with_missing_external_unseal() {
                     .containers
                     .iter_mut()
                 {
-                    if container.name == "vault" {
-                        container.image = Some(
-                            format!("{}:{}", VAULT_IMAGE_NAME, VAULT_VERSION_CURRENT).to_string(),
-                        );
+                    if container.name == flavor.container_name() {
+                        container.image =
+                            Some(format!("{}:{}", image_name, version_current).to_string());
                     }
                 }
             })
@@ -218,7 +224,7 @@ async fn upgrade_pod_succeeds_fails_with_missing_external_unseal() {
 
     assert_eq!(
         VaultVersion::try_from(&pod).unwrap(),
-        VaultVersion::from_str(VAULT_VERSION_OLD).unwrap()
+        VaultVersion::from_str(version_old).unwrap()
     );
 
     tokio::time::timeout(
@@ -238,11 +244,14 @@ async fn upgrade_pod_succeeds_fails_with_missing_external_unseal() {
     teardown(&namespace, &name).await;
 }
 
-#[ignore = "needs a running kubernetes cluster and the helm cli"]
-#[tokio::test]
-async fn upgrade_pod_succeeds_with_external_unseal() {
+pub async fn upgrade_pod_succeeds_with_external_unseal(
+    version_old: &str,
+    version_current: &str,
+    image_name: &str,
+    flavor: vault_mgmt_lib::Flavor,
+) {
     let (namespace, name, _, stss, init, pods) =
-        setup("upgrade-with-ext-unseal", VAULT_VERSION_OLD).await;
+        setup(flavor, "upgrade-with-ext-unseal", version_old).await;
 
     match stss.entry(&name).await.unwrap() {
         Entry::Occupied(sts) => {
@@ -258,10 +267,9 @@ async fn upgrade_pod_succeeds_with_external_unseal() {
                     .containers
                     .iter_mut()
                 {
-                    if container.name == "vault" {
-                        container.image = Some(
-                            format!("{}:{}", VAULT_IMAGE_NAME, VAULT_VERSION_CURRENT).to_string(),
-                        );
+                    if container.name == flavor.container_name() {
+                        container.image =
+                            Some(format!("{}:{}", image_name, version_current).to_string());
                     }
                 }
             })
@@ -277,7 +285,7 @@ async fn upgrade_pod_succeeds_with_external_unseal() {
 
     assert_eq!(
         VaultVersion::try_from(&pod).unwrap(),
-        VaultVersion::from_str(VAULT_VERSION_OLD).unwrap()
+        VaultVersion::from_str(version_old).unwrap()
     );
 
     let pods_unseal = pods.clone();
@@ -297,7 +305,7 @@ async fn upgrade_pod_succeeds_with_external_unseal() {
         kube::runtime::wait::await_condition(
             pods_unseal.api.clone(),
             &format!("{}-1", &name_unseal),
-            is_pod_sealed(),
+            is_pod_sealed(flavor),
         )
         .await
         .unwrap();

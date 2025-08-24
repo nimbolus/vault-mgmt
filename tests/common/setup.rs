@@ -1,24 +1,20 @@
 use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
 use kube::{Api, Client};
 use secrecy::ExposeSecret;
-use tokio::{process::Command, sync::OnceCell};
+use tokio::sync::OnceCell;
 use vault_mgmt_lib::{
-    raft_configuration_all_voters, GetRaftConfiguration, InitResult, PodApi, VAULT_PORT,
+    raft_configuration_all_voters, Flavor, GetRaftConfiguration, InitResult, PodApi, VAULT_PORT,
 };
 
-use crate::{helm, prepare};
+use super::{helm, prepare};
 
 pub(crate) fn get_namespace() -> String {
     std::env::var("VAULT_MGMT_E2E_NAMESPACE").unwrap_or_else(|_| "vault-mgmt-e2e".to_string())
 }
 
-pub(crate) const VAULT_VERSION_OLD: &str = "1.16.0";
-pub(crate) const VAULT_VERSION_CURRENT: &str = "1.17.0";
-pub(crate) const VAULT_IMAGE_NAME: &str = "hashicorp/vault";
-
 static ONCE_CRYPTO_SETUP: OnceCell<()> = OnceCell::const_new();
 
-pub(crate) async fn setup_crypto_provider() {
+pub async fn setup_crypto_provider() {
     ONCE_CRYPTO_SETUP
         .get_or_init(|| async {
             rustls::crypto::ring::default_provider()
@@ -29,6 +25,7 @@ pub(crate) async fn setup_crypto_provider() {
 }
 
 pub(crate) async fn setup(
+    flavor: Flavor,
     prefix: &str,
     version: &str,
 ) -> (
@@ -47,8 +44,13 @@ pub(crate) async fn setup(
     let suffix = rand::random::<u16>();
     let name = dbg!(format!("{}-{}", prefix, suffix));
 
+    let values = match flavor {
+        Flavor::OpenBao => include_str!("values-openbao.yaml").to_string(),
+        Flavor::Vault => include_str!("values-vault.yaml").to_string(),
+    };
+
     helm::add_repo().await.unwrap();
-    helm::install_chart(&namespace, &name, Some(version))
+    helm::install_chart(&namespace, &name, Some(version), flavor, values)
         .await
         .unwrap();
 
@@ -68,7 +70,12 @@ pub(crate) async fn setup(
         &init.root_token.expose_secret()
     );
 
-    let pod_api = PodApi::new(pods.clone(), false, "".to_string());
+    let pod_api = PodApi::new(
+        pods.clone(),
+        false,
+        "".to_string(),
+        vault_mgmt_lib::Flavor::OpenBao,
+    );
 
     let mut pf = pod_api
         .http(&format!("{}-0", name), VAULT_PORT)
@@ -84,26 +91,4 @@ pub(crate) async fn setup(
 
 pub(crate) async fn teardown(namespace: &str, name: &str) {
     helm::uninstall_chart(namespace, name).await.unwrap();
-}
-
-#[ignore = "needs a running kubernetes cluster and the helm cli"]
-#[tokio::test]
-async fn kube_connection_succeeds() {
-    let client = Client::try_default().await.unwrap();
-    let pods: Api<Pod> = Api::namespaced(client, &get_namespace());
-
-    pods.list(&Default::default()).await.unwrap();
-}
-
-#[ignore = "needs a running kubernetes cluster and the helm cli"]
-#[tokio::test]
-async fn helm_cli_available() {
-    let helm = which::which("helm").unwrap();
-
-    let output = Command::new(helm).arg("version").output().await.unwrap();
-
-    assert!(output.status.success());
-
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("version.BuildInfo"));
 }
