@@ -16,7 +16,8 @@ pub struct PodSealStatus {
     pub progress: u8,
     pub nonce: String,
     pub version: String,
-    pub build_date: String,
+    pub build_date: Option<String>,
+    pub commit_date: Option<String>,
     pub migration: bool,
     pub recovery_seal: bool,
     pub storage_type: String,
@@ -276,6 +277,23 @@ mod tests {
         })
     }
 
+    fn openbao_seal_status() -> serde_json::Value {
+        serde_json::json!({
+            "type": "shamir",
+            "initialized": true,
+            "sealed": true,
+            "t": 1,
+            "n": 1,
+            "progress": 0,
+            "nonce": "",
+            "recovery_seal": false,
+            "version": "2.6.2",
+            "commit_date": "2026-08-18T15:48:21Z",
+            "migration": false,
+            "storage_type": "postgresql"
+        })
+    }
+
     async fn mock(response: serde_json::Value) -> MockServer {
         let mock_server = MockServer::start().await;
 
@@ -312,7 +330,7 @@ mod tests {
         assert_eq!(status.progress, 0);
         assert_eq!(status.nonce, "");
         assert_eq!(status.version, "1.13.0");
-        assert_eq!(status.build_date, "2023-03-01T14:58:13Z");
+        assert_eq!(status.build_date.unwrap(), "2023-03-01T14:58:13Z");
         assert!(!status.migration);
         assert!(!status.recovery_seal);
         assert_eq!(status.storage_type, "raft");
@@ -324,6 +342,35 @@ mod tests {
         assert_eq!(status.leader_cluster_address, None);
         assert_eq!(status.raft_committed_index, None);
         assert_eq!(status.raft_applied_index, None);
+    }
+
+    #[tokio::test]
+    async fn getting_seal_status_works_for_openbao() {
+        let mock_server = mock(openbao_seal_status()).await;
+
+        let mut client = HttpForwarderService::http(
+            tokio::net::TcpStream::connect(mock_server.uri().strip_prefix("http://").unwrap())
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let status = client.seal_status().await.unwrap();
+
+        assert_eq!(status.type_, "shamir");
+        assert!(status.initialized);
+        assert!(status.sealed);
+        assert_eq!(status.t, 1);
+        assert_eq!(status.n, 1);
+        assert_eq!(status.progress, 0);
+        assert_eq!(status.nonce, "");
+        assert_eq!(status.version, "2.6.2");
+        assert_eq!(status.build_date, None);
+        assert_eq!(status.commit_date.unwrap(), "2026-08-18T15:48:21Z");
+        assert!(!status.migration);
+        assert!(!status.recovery_seal);
+        assert_eq!(status.storage_type, "postgresql");
     }
 
     #[tokio::test]
@@ -348,7 +395,7 @@ mod tests {
         assert_eq!(status.progress, 0);
         assert_eq!(status.nonce, "");
         assert_eq!(status.version, "1.13.0");
-        assert_eq!(status.build_date, "2023-03-01T14:58:13Z");
+        assert_eq!(status.build_date.unwrap(), "2023-03-01T14:58:13Z");
         assert!(!status.migration);
         assert!(!status.recovery_seal);
         assert_eq!(status.storage_type, "raft");
@@ -384,7 +431,7 @@ mod tests {
         assert_eq!(status.progress, 0);
         assert_eq!(status.nonce, "");
         assert_eq!(status.version, "1.13.0");
-        assert_eq!(status.build_date, "2023-03-01T14:58:13Z");
+        assert_eq!(status.build_date.unwrap(), "2023-03-01T14:58:13Z");
         assert!(!status.migration);
         assert!(!status.recovery_seal);
         assert_eq!(status.storage_type, "raft");

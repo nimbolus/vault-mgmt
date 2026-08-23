@@ -3,8 +3,8 @@ use vault_mgmt_lib::Flavor;
 pub mod common;
 
 pub(crate) const VERSION_OLD: &str = "2.2.1";
-pub(crate) const VERSION_CURRENT: &str = "2.3.2";
-pub(crate) const IMAGE_NAME: &str = "openbao/openbao";
+pub(crate) const VERSION_CURRENT: &str = "2.6.2";
+pub(crate) const IMAGE_NAME: &str = "quay.io/openbao/openbao";
 
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]

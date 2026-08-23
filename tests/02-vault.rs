@@ -4,7 +4,7 @@ pub mod common;
 
 pub(crate) const VERSION_OLD: &str = "1.16.0";
 pub(crate) const VERSION_CURRENT: &str = "1.17.0";
-pub(crate) const IMAGE_NAME: &str = "hashicorp/vault";
+pub(crate) const IMAGE_NAME: &str = "docker.io/hashicorp/vault";
 
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]
