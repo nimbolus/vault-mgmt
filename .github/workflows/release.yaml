@@ -1,7 +1,8 @@
 name: release binaries
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -14,8 +15,21 @@ permissions:
   statuses: read
 
 jobs:
-  release:
+  draft-release:
+    name: create draft release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
     name: release binaries
+    needs: draft-release
     strategy:
       matrix:
         include:
@@ -42,11 +56,21 @@ jobs:
         with:
           name: vault-mgmt-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
           path: target/${{ matrix.target }}/release/vault-mgmt-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
-      - name: Releasing release versions
+      - name: Attach binary to draft release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          draft: true
           files: |
             target/${{ matrix.target }}/release/vault-mgmt-*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false --repo "${{ github.repository }}"
