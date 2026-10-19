@@ -7,6 +7,7 @@ use secrecy::Secret;
 use self_update::cargo_crate_version;
 use std::collections::HashMap;
 use std::io;
+use std::path::Path;
 use std::str::FromStr;
 use tokio::task::spawn_blocking;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
@@ -370,6 +371,16 @@ async fn main() -> anyhow::Result<()> {
             .await?;
         }
         Commands::SelfUpdate {} => {
+            // self_update replaces the resolved executable, which for a brew
+            // install is the file inside the versioned keg brew manages
+            let exe = std::env::current_exe()?.canonicalize()?;
+            if is_homebrew_install(&exe) {
+                anyhow::bail!(
+                    "vault-mgmt was installed with Homebrew ({}), run `brew upgrade vault-mgmt` instead",
+                    exe.display()
+                );
+            }
+
             let mut status = self_update::backends::github::Update::configure();
             status
                 .repo_owner("nimbolus")
@@ -392,6 +403,15 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Whether `exe` lives in a Homebrew keg, e.g.
+/// /opt/homebrew/Cellar/vault-mgmt/0.1.8/bin/vault-mgmt
+fn is_homebrew_install(exe: &Path) -> bool {
+    let components: Vec<_> = exe.components().map(|c| c.as_os_str()).collect();
+    components
+        .windows(2)
+        .any(|w| w[0] == "Cellar" && w[1] == "vault-mgmt")
 }
 
 fn get_token(arg: Option<Secret<String>>) -> anyhow::Result<Secret<String>> {
@@ -442,4 +462,30 @@ where
     let pods: Api<T> = Api::namespaced(client, namespace);
 
     Ok(pods)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_homebrew_kegs() {
+        assert!(is_homebrew_install(Path::new(
+            "/opt/homebrew/Cellar/vault-mgmt/0.1.8/bin/vault-mgmt"
+        )));
+        assert!(is_homebrew_install(Path::new(
+            "/home/linuxbrew/.linuxbrew/Cellar/vault-mgmt/0.1.8/bin/vault-mgmt"
+        )));
+    }
+
+    #[test]
+    fn ignores_other_locations() {
+        assert!(!is_homebrew_install(Path::new(
+            "/home/user/.cargo/bin/vault-mgmt"
+        )));
+        assert!(!is_homebrew_install(Path::new("/usr/local/bin/vault-mgmt")));
+        assert!(!is_homebrew_install(Path::new(
+            "/opt/homebrew/Cellar/other-tool/1.0/bin/vault-mgmt"
+        )));
+    }
 }
