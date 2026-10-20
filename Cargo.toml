@@ -30,8 +30,6 @@ tokio = { version = "1.44.2", features = ["full"] }
 tokio-util = "0.7.15"
 tokio-rustls = "0.26.2"
 hyper = "1.6.0"
-hyper-rustls = "0.27.5"
-tower = "0.4.13"
 futures-util = "0.3.31"
 kube = { version = "0.93.1", default-features = false, features = [
     "client",
@@ -46,18 +44,19 @@ serde_json = "1.0.140"
 secrecy = { version = "0.8.0", features = ["serde"] }
 prettytable = "0.10.0"
 serde_yaml = "0.9.34"
-which = "7.0.3"
-rand = "0.8.5"
 serde = "1.0.219"
 tower-test = "0.4.0"
 http = "1.3.1"
 async-trait = "0.1.88"
 wiremock = "0.6.3"
 clap_complete = "4.5.47"
-self_update = { version = "0.41.0", default-features = false, features = [
+self_update = { version = "1.3.1", default-features = false, features = [
+    "reqwest",
     "rustls",
-    "compression-flate2",
+    "github",
+    "progress-bar",
     "archive-tar",
+    "compression-tar-gz",
 ] }
 tokio-retry = "0.3.0"
 rustls = { version = "0.23.26", default-features = false, features = [
@@ -74,3 +73,7 @@ hyper-util = { version = "0.1.11", features = [
     "tokio",
 ] }
 rustls-native-certs = "0.8.1"
+
+[dev-dependencies]
+rand = "0.8.5"
+which = "7.0.3"
