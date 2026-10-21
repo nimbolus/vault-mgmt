@@ -178,7 +178,7 @@ uri.as_str(),
                         .unwrap();
 
                 let mut list = List::<StatefulSet>::default();
-                list.items.push(serde_yaml::from_str(&file).unwrap());
+                list.items.push(serde_saphyr::from_str(&file).unwrap());
                 list.metadata.resource_version = Some("0".to_string());
                 serde_json::to_string(&list).unwrap()
             }
@@ -189,7 +189,7 @@ uri.as_str(),
                         .await
                         .unwrap();
 
-                serde_json::to_string(&serde_yaml::from_str::<Value>(&file).unwrap()).unwrap()
+                serde_json::to_string(&serde_saphyr::from_str::<Value>(&file).unwrap()).unwrap()
             }
             _ => panic!("Unexpected API request {:?}", request),
         };
@@ -235,7 +235,7 @@ uri.as_str(),
                             let mut list = List::<StatefulSet>::default();
 
                             for state in state_list.iter() {
-                                let mut sts: StatefulSet = serde_yaml::from_str(&file).unwrap();
+                                let mut sts: StatefulSet = serde_saphyr::from_str(&file).unwrap();
                                 sts.status = Some(state.clone());
                                 list.items.push(sts);
                             }
@@ -249,7 +249,7 @@ uri.as_str(),
                             let mut list = String::new();
 
                             for state in state_list.iter() {
-                                let mut sts: StatefulSet = serde_yaml::from_str(&file).unwrap();
+                                let mut sts: StatefulSet = serde_saphyr::from_str(&file).unwrap();
                                 sts.status = Some(state.clone());
                                 sts.metadata.resource_version = Some(format!("{}", i));
                                 i += 1;

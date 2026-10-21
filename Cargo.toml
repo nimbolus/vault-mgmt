@@ -76,4 +76,4 @@ rustls-native-certs = "0.8.1"
 [dev-dependencies]
 rand = "0.8.5"
 which = "7.0.3"
-serde_yaml = "0.9.34"
+serde-saphyr = "2.0.0"

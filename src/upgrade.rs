@@ -242,7 +242,7 @@ mod tests {
     use k8s_openapi::{api::core::v1::Pod, List};
     use kube::{client::Body, Api, Client};
     use secrecy::SecretString;
-    use serde_yaml::Value;
+    use serde_json::Value;
     use tokio::task::JoinHandle;
     use tokio_util::sync::CancellationToken;
     use tower_test::mock::{self, Handle};
@@ -258,7 +258,7 @@ mod tests {
         .await
         .unwrap();
 
-        let pod: Pod = serde_yaml::from_str(&file).unwrap();
+        let pod: Pod = serde_saphyr::from_str(&file).unwrap();
 
         let target = VaultVersion {
             version: "1.13.0".to_string(),
@@ -276,7 +276,7 @@ mod tests {
         .await
         .unwrap();
 
-        let pod: Pod = serde_yaml::from_str(&file).unwrap();
+        let pod: Pod = serde_saphyr::from_str(&file).unwrap();
 
         let target = VaultVersion {
             version: "1.14.0".to_string(),
@@ -294,7 +294,7 @@ mod tests {
         .await
         .unwrap();
 
-        let pod: Pod = serde_yaml::from_str(&file).unwrap();
+        let pod: Pod = serde_saphyr::from_str(&file).unwrap();
 
         let target = VaultVersion {
             version: "1.0.0".to_string(),
@@ -323,7 +323,7 @@ mod tests {
 
                     let body = match (method.as_str(), uri.as_str(), query.as_str(), watch) {
                         ("GET", "/api/v1/namespaces/vault-mgmt-e2e/pods", "&fieldSelector=metadata.name%3Dvault-mgmt-e2e-2274-1&resourceVersion=0", false) => {
-                            let mut pod: Pod = serde_yaml::from_str(
+                            let mut pod: Pod = serde_saphyr::from_str(
                                 &tokio::fs::read_to_string(format!(
                                     "tests/resources/installed/{}{}.yaml",
                                     "api/v1/namespaces/vault-mgmt-e2e/pods/vault-mgmt-e2e-2274-",
@@ -354,7 +354,7 @@ mod tests {
                                 .await
                                 .unwrap();
 
-                            serde_json::to_string(&serde_yaml::from_str::<Value>(&file).unwrap()).unwrap()
+                            serde_json::to_string(&serde_saphyr::from_str::<Value>(&file).unwrap()).unwrap()
                         }
                         (method, _, _, _) => {
                             if method == "DELETE" {

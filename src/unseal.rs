@@ -255,7 +255,7 @@ mod tests {
                                 .await
                                 .unwrap();
 
-                                let pod: Pod = serde_yaml::from_str(&file).unwrap();
+                                let pod: Pod = serde_saphyr::from_str(&file).unwrap();
                                 list.items.push(pod);
                             }
 

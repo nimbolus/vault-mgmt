@@ -93,7 +93,7 @@ mod tests {
         .await
         .unwrap();
 
-        let statefulset: &StatefulSet = &serde_yaml::from_str(&file).unwrap();
+        let statefulset: &StatefulSet = &serde_saphyr::from_str(&file).unwrap();
 
         let version: VaultVersion = statefulset.try_into().unwrap();
 
@@ -109,7 +109,7 @@ mod tests {
         .await
         .unwrap();
 
-        let pod: &k8s_openapi::api::core::v1::Pod = &serde_yaml::from_str(&file).unwrap();
+        let pod: &k8s_openapi::api::core::v1::Pod = &serde_saphyr::from_str(&file).unwrap();
 
         let version: VaultVersion = pod.try_into().unwrap();
 
@@ -125,7 +125,7 @@ mod tests {
         .await
         .unwrap();
 
-        let mut pod: Pod = serde_yaml::from_str(&file).unwrap();
+        let mut pod: Pod = serde_saphyr::from_str(&file).unwrap();
 
         pod.spec
             .as_mut()
