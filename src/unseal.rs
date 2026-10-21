@@ -7,8 +7,8 @@ use secrecy::{ExposeSecret, SecretString};
 use tokio::process::Command;
 
 use crate::{
-    get_unseal_keys_request, list_vault_pods, unseal_request, BytesBody, ExecIn,
-    HttpForwarderService, HttpRequest,
+    BytesBody, ExecIn, HttpForwarderService, HttpRequest, get_unseal_keys_request, list_vault_pods,
+    unseal_request,
 };
 
 /// Get the unseal keys by running the specified command
@@ -210,19 +210,19 @@ mod tests {
 
     use http::{Method, Request, Response, StatusCode};
     use hyper::body::Bytes;
-    use k8s_openapi::{api::core::v1::Pod, List};
-    use kube::{client::Body, Api, Client};
+    use k8s_openapi::{List, api::core::v1::Pod};
+    use kube::{Api, Client, client::Body};
     use secrecy::SecretString;
     use tokio::task::JoinHandle;
     use tokio_util::sync::CancellationToken;
     use tower_test::mock::{self, Handle};
     use wiremock::{
-        matchers::{header, method, path},
         Mock, MockServer, ResponseTemplate,
+        matchers::{header, method, path},
     };
 
     use crate::{
-        list_sealed_pods, GetUnsealKeys, GetUnsealKeysFromVault, HttpForwarderService, Unseal,
+        GetUnsealKeys, GetUnsealKeysFromVault, HttpForwarderService, Unseal, list_sealed_pods,
     };
 
     async fn mock_list_sealed(

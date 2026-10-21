@@ -1,16 +1,16 @@
 use std::{convert::Infallible, sync::Arc};
 
 use http::Response;
-use http_body_util::{combinators::BoxBody, BodyExt, Empty};
+use http_body_util::{BodyExt, Empty, combinators::BoxBody};
 use hyper::{
-    body::{Body, Bytes},
     Request,
+    body::{Body, Bytes},
 };
 use hyper_util::rt::TokioIo;
 use rustls::crypto::ring;
 use secrecy::{ExposeSecret, SecretString};
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_rustls::rustls::{pki_types, RootCertStore};
+use tokio_rustls::rustls::{RootCertStore, pki_types};
 use tracing::*;
 
 pub type BytesBody = BoxBody<Bytes, Infallible>;
@@ -206,7 +206,7 @@ mod tests {
     use http::StatusCode;
     use http_body_util::Empty;
     use hyper::body::Bytes;
-    use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
 
     use crate::http::{HttpForwarderService, HttpRequest};
 

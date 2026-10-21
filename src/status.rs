@@ -3,7 +3,7 @@ use hyper::body::Bytes;
 use kube::runtime::wait::Condition;
 use secrecy::SecretString;
 
-use crate::{raft_configuration_request, seal_status_request, BytesBody, HttpRequest};
+use crate::{BytesBody, HttpRequest, raft_configuration_request, seal_status_request};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct PodSealStatus {
@@ -206,13 +206,13 @@ mod tests {
 
     use secrecy::SecretString;
     use wiremock::{
-        matchers::{header, method, path},
         Mock, MockServer, ResponseTemplate,
+        matchers::{header, method, path},
     };
 
     use crate::{
-        is_seal_status_initialized, raft_configuration_all_voters, raft_configuration_any_leader,
         GetRaftConfiguration, GetSealStatus, HttpForwarderService, RaftConfiguration,
+        is_seal_status_initialized, raft_configuration_all_voters, raft_configuration_any_leader,
     };
 
     fn minimal_seal_status() -> serde_json::Value {
@@ -627,10 +627,7 @@ mod tests {
         .unwrap();
 
         let config = client
-            .await_raft_configuration(
-                SecretString::from("abc"),
-                raft_configuration_any_leader(),
-            )
+            .await_raft_configuration(SecretString::from("abc"), raft_configuration_any_leader())
             .await
             .unwrap()
             .unwrap();
@@ -656,10 +653,7 @@ mod tests {
         .unwrap();
 
         let config = client
-            .await_raft_configuration(
-                SecretString::from("abc"),
-                raft_configuration_any_leader(),
-            )
+            .await_raft_configuration(SecretString::from("abc"), raft_configuration_any_leader())
             .await
             .unwrap()
             .unwrap();
@@ -685,10 +679,7 @@ mod tests {
         .unwrap();
 
         let config = client
-            .await_raft_configuration(
-                SecretString::from("abc"),
-                raft_configuration_all_voters(),
-            )
+            .await_raft_configuration(SecretString::from("abc"), raft_configuration_all_voters())
             .await
             .unwrap()
             .unwrap();

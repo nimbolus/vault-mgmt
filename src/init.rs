@@ -6,7 +6,7 @@ use kube::Api;
 use secrecy::SecretString;
 use tracing::*;
 
-use crate::{init_request, raft_join_request, BytesBody, Flavor, HttpRequest, PodApi, VAULT_PORT};
+use crate::{BytesBody, Flavor, HttpRequest, PodApi, VAULT_PORT, init_request, raft_join_request};
 
 #[derive(Debug, serde::Serialize)]
 pub struct InitRequest {
@@ -217,8 +217,8 @@ pub async fn raft_join(
 mod tests {
     use http::{Method, StatusCode};
     use wiremock::{
-        matchers::{body_json, header, method, path},
         Mock, MockServer, ResponseTemplate,
+        matchers::{body_json, header, method, path},
     };
 
     use crate::{

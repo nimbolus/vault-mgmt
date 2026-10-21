@@ -3,7 +3,7 @@ use kube::{Api, Client};
 use secrecy::ExposeSecret;
 use tokio::sync::OnceCell;
 use vault_mgmt_lib::{
-    raft_configuration_all_voters, Flavor, GetRaftConfiguration, InitResult, PodApi, VAULT_PORT,
+    Flavor, GetRaftConfiguration, InitResult, PodApi, VAULT_PORT, raft_configuration_all_voters,
 };
 
 use super::{helm, prepare};

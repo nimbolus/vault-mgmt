@@ -1,8 +1,8 @@
 use clap::builder::TypedValueParser;
 use clap::{CommandFactory, Parser, Subcommand};
-use clap_complete::{generate, Shell};
+use clap_complete::{Shell, generate};
 use k8s_openapi::api::apps::v1::StatefulSet;
-use kube::{api::Api, core::ObjectMeta, Client};
+use kube::{Client, api::Api, core::ObjectMeta};
 use secrecy::SecretString;
 use self_update::cargo_crate_version;
 use std::collections::HashMap;
@@ -10,13 +10,13 @@ use std::io;
 use std::path::Path;
 use std::str::FromStr;
 use tokio::task::spawn_blocking;
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
+use tracing_subscriber::{EnvFilter, Registry, layer::SubscriberExt};
 use vault_mgmt_lib::Flavor;
 
 use vault_mgmt_lib::{
-    construct_table, is_statefulset_ready, GetUnsealKeys, GetUnsealKeysFromVault, StepDown,
-    VAULT_PORT, {exec, ExecIn}, {get_unseal_keys, list_sealed_pods, Unseal},
-    {list_vault_pods, PodApi, StatefulSetApi},
+    GetUnsealKeys, GetUnsealKeysFromVault, StepDown, VAULT_PORT, construct_table,
+    is_statefulset_ready, {ExecIn, exec}, {PodApi, StatefulSetApi, list_vault_pods},
+    {Unseal, get_unseal_keys, list_sealed_pods},
 };
 
 /// Manage your vault installation in Kubernetes

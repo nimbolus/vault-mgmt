@@ -1,12 +1,12 @@
 use std::str::FromStr;
 
 use kube::{
-    api::{entry::Entry, PostParams},
-    runtime::conditions::is_deleted,
     ResourceExt,
+    api::{PostParams, entry::Entry},
+    runtime::conditions::is_deleted,
 };
 
-use vault_mgmt_lib::{is_pod_sealed, Flavor, Unseal, VaultVersion, VAULT_PORT};
+use vault_mgmt_lib::{Flavor, Unseal, VAULT_PORT, VaultVersion, is_pod_sealed};
 
 use super::setup::{setup, teardown};
 

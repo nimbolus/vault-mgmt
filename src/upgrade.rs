@@ -2,15 +2,16 @@ use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
 use kube::{api::DeleteParams, runtime::wait::conditions::is_pod_running};
 use secrecy::SecretString;
 use tokio_retry::{
-    strategy::{jitter, ExponentialBackoff},
     Retry,
+    strategy::{ExponentialBackoff, jitter},
 };
 use tracing::*;
 
 use crate::{
-    is_active, is_pod_exporting_seal_status, ExecIn, StepDown, Unseal, VaultVersion, VAULT_PORT,
-    {is_pod_ready, is_pod_standby, is_pod_unsealed}, {is_seal_status_initialized, GetSealStatus},
-    {is_sealed, list_vault_pods, PodApi, StatefulSetApi},
+    ExecIn, StepDown, Unseal, VAULT_PORT, VaultVersion, is_active, is_pod_exporting_seal_status,
+    {GetSealStatus, is_seal_status_initialized},
+    {PodApi, StatefulSetApi, is_sealed, list_vault_pods},
+    {is_pod_ready, is_pod_standby, is_pod_unsealed},
 };
 
 impl PodApi {
@@ -239,8 +240,8 @@ mod tests {
 
     use http::{Request, Response, StatusCode};
     use hyper::body::Bytes;
-    use k8s_openapi::{api::core::v1::Pod, List};
-    use kube::{client::Body, Api, Client};
+    use k8s_openapi::{List, api::core::v1::Pod};
+    use kube::{Api, Client, client::Body};
     use secrecy::SecretString;
     use serde_json::Value;
     use tokio::task::JoinHandle;
@@ -405,16 +406,9 @@ mod tests {
 
         let pod = pods.api.get("vault-mgmt-e2e-2274-1").await.unwrap();
 
-        pods.upgrade(
-            pod,
-            &target,
-            SecretString::from("token"),
-            false,
-            false,
-            &[],
-        )
-        .await
-        .unwrap_err();
+        pods.upgrade(pod, &target, SecretString::from("token"), false, false, &[])
+            .await
+            .unwrap_err();
 
         cancel.cancel();
 
@@ -440,16 +434,9 @@ mod tests {
 
         let pod = pods.api.get("vault-mgmt-e2e-2274-1").await.unwrap();
 
-        pods.upgrade(
-            pod,
-            &target,
-            SecretString::from("token"),
-            false,
-            true,
-            &[],
-        )
-        .await
-        .unwrap_err();
+        pods.upgrade(pod, &target, SecretString::from("token"), false, true, &[])
+            .await
+            .unwrap_err();
 
         cancel.cancel();
 

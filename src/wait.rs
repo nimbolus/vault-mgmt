@@ -87,9 +87,7 @@ pub fn is_pod_exporting_seal_status(flavor: Flavor) -> impl Condition<Pod> {
     move |obj: Option<&Pod>| {
         if let Some(pod) = &obj {
             if let Some(labels) = &pod.metadata.labels {
-                return labels
-                    .get(&format!("{}-sealed", flavor))
-                    .is_some();
+                return labels.get(&format!("{}-sealed", flavor)).is_some();
             }
         }
         false
@@ -147,14 +145,14 @@ mod tests {
     use http::{Request, Response};
     use hyper::body::Bytes;
     use k8s_openapi::{
+        List,
         api::{
             apps::v1::{StatefulSet, StatefulSetStatus},
             core::v1::Pod,
         },
         apimachinery::pkg::apis::meta::v1::WatchEvent,
-        List,
     };
-    use kube::{client::Body, Api, Client, ResourceExt};
+    use kube::{Api, Client, ResourceExt, client::Body};
     use serde_json::Value;
     use tokio_util::sync::CancellationToken;
     use tower_test::mock::{self, Handle};
@@ -166,16 +164,18 @@ mod tests {
 
         let uri = request.uri().to_string();
 
-        let body = match (
-            request.method().as_str(),
-uri.as_str(),
-        ) {
-            ("GET", "/apis/apps/v1/namespaces/vault-mgmt-e2e/statefulsets?&fieldSelector=metadata.name%3Dvault-mgmt-e2e-2274&resourceVersion=0") => {
+        let body = match (request.method().as_str(), uri.as_str()) {
+            (
+                "GET",
+                "/apis/apps/v1/namespaces/vault-mgmt-e2e/statefulsets?&fieldSelector=metadata.name%3Dvault-mgmt-e2e-2274&resourceVersion=0",
+            ) => {
                 println!("GET {}", uri);
-                let file =
-                    tokio::fs::read_to_string(format!("tests/resources/installed/{}.yaml", "apis/apps/v1/namespaces/vault-mgmt-e2e/statefulsets/vault-mgmt-e2e-2274"))
-                        .await
-                        .unwrap();
+                let file = tokio::fs::read_to_string(format!(
+                    "tests/resources/installed/{}.yaml",
+                    "apis/apps/v1/namespaces/vault-mgmt-e2e/statefulsets/vault-mgmt-e2e-2274"
+                ))
+                .await
+                .unwrap();
 
                 let mut list = List::<StatefulSet>::default();
                 list.items.push(serde_saphyr::from_str(&file).unwrap());
@@ -184,10 +184,12 @@ uri.as_str(),
             }
             ("GET", uri) => {
                 println!("GET {}", uri);
-                let file =
-                    tokio::fs::read_to_string(format!("tests/resources/installed/{}.yaml", uri.strip_prefix("/").unwrap()))
-                        .await
-                        .unwrap();
+                let file = tokio::fs::read_to_string(format!(
+                    "tests/resources/installed/{}.yaml",
+                    uri.strip_prefix("/").unwrap()
+                ))
+                .await
+                .unwrap();
 
                 serde_json::to_string(&serde_saphyr::from_str::<Value>(&file).unwrap()).unwrap()
             }

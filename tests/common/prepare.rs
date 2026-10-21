@@ -1,12 +1,12 @@
-use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
+use futures_util::stream::FuturesUnordered;
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Pod;
-use kube::{api::ListParams, Api};
+use kube::{Api, api::ListParams};
 
 use vault_mgmt_lib::{
-    PodApi, Unseal, VAULT_PORT, {is_pod_ready, is_statefulset_ready},
-    {is_seal_status_initialized, GetSealStatus}, {Init, InitRequest, InitResult},
+    PodApi, Unseal, VAULT_PORT, {GetSealStatus, is_seal_status_initialized},
+    {Init, InitRequest, InitResult}, {is_pod_ready, is_statefulset_ready},
 };
 
 pub async fn init_unseal_cluster(

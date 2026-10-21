@@ -2,7 +2,7 @@ use http_body_util::{BodyExt, Empty};
 use hyper::body::Bytes;
 use secrecy::SecretString;
 
-use crate::{step_down_request, BytesBody, HttpRequest};
+use crate::{BytesBody, HttpRequest, step_down_request};
 
 /// Step down vault pod from active to standby
 #[async_trait::async_trait]
@@ -37,8 +37,8 @@ mod tests {
     use http::{Method, StatusCode};
     use secrecy::SecretString;
     use wiremock::{
-        matchers::{header, method, path},
         Mock, MockServer, ResponseTemplate,
+        matchers::{header, method, path},
     };
 
     use crate::{HttpForwarderService, StepDown};

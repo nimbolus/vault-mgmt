@@ -1,4 +1,4 @@
-use vault_mgmt_lib::{construct_table, Flavor};
+use vault_mgmt_lib::{Flavor, construct_table};
 
 use super::setup::{setup, teardown};
 

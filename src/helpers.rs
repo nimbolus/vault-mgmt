@@ -1,5 +1,5 @@
 use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
-use kube::{api::ListParams, Api};
+use kube::{Api, api::ListParams};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{BytesBody, HttpForwarderService};
@@ -100,7 +100,7 @@ impl PodApi {
         &self,
         pod: &str,
         port: u16,
-    ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin> {
+    ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + use<>> {
         let mut pf = self.api.portforward(pod, &[port]).await?;
         pf.take_stream(port).ok_or(anyhow::anyhow!(
             "port {} is not available on pod {}",

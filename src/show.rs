@@ -1,8 +1,8 @@
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::Api;
-use prettytable::{color, Attr, Cell, Row, Table};
+use prettytable::{Attr, Cell, Row, Table, color};
 
-use crate::{list_vault_pods, Flavor};
+use crate::{Flavor, list_vault_pods};
 
 #[tracing::instrument(skip_all)]
 pub async fn construct_table(api: &Api<Pod>, flavor: Flavor) -> anyhow::Result<Table> {

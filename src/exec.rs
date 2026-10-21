@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
 use tracing::*;
 
-use crate::{list_vault_pods, Flavor};
+use crate::{Flavor, list_vault_pods};
 
 #[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ExecIn {
