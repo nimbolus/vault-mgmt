@@ -1,6 +1,6 @@
 use http_body_util::{BodyExt, Empty};
 use hyper::body::Bytes;
-use secrecy::Secret;
+use secrecy::SecretString;
 
 use crate::{step_down_request, BytesBody, HttpRequest};
 
@@ -8,7 +8,7 @@ use crate::{step_down_request, BytesBody, HttpRequest};
 #[async_trait::async_trait]
 pub trait StepDown {
     /// Step down vault pod from active to standby
-    async fn step_down(&mut self, token: Secret<String>) -> anyhow::Result<()>;
+    async fn step_down(&mut self, token: SecretString) -> anyhow::Result<()>;
 }
 
 #[async_trait::async_trait]
@@ -16,7 +16,7 @@ impl<T> StepDown for T
 where
     T: HttpRequest<BytesBody> + Send + Sync + 'static,
 {
-    async fn step_down(&mut self, token: Secret<String>) -> anyhow::Result<()> {
+    async fn step_down(&mut self, token: SecretString) -> anyhow::Result<()> {
         let http_req = step_down_request(token, Empty::<Bytes>::new().boxed())?;
 
         let (parts, body) = self.send_request(http_req).await?.into_parts();
@@ -33,10 +33,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
 
     use http::{Method, StatusCode};
-    use secrecy::Secret;
+    use secrecy::SecretString;
     use wiremock::{
         matchers::{header, method, path},
         Mock, MockServer, ResponseTemplate,
@@ -65,7 +64,7 @@ mod tests {
         .await
         .unwrap();
 
-        let outcome = client.step_down(Secret::from_str("abc").unwrap()).await;
+        let outcome = client.step_down(SecretString::from("abc")).await;
 
         assert!(outcome.is_ok());
     }

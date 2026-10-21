@@ -1,6 +1,6 @@
 use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
 use kube::{api::DeleteParams, runtime::wait::conditions::is_pod_running};
-use secrecy::Secret;
+use secrecy::SecretString;
 use tokio_retry::{
     strategy::{jitter, ExponentialBackoff},
     Retry,
@@ -35,10 +35,10 @@ impl PodApi {
         &self,
         pod: Pod,
         target: &VaultVersion,
-        token: Secret<String>,
+        token: SecretString,
         should_unseal: bool,
         force_upgrade: bool,
-        keys: &[Secret<String>],
+        keys: &[SecretString],
     ) -> anyhow::Result<()> {
         let name = pod
             .metadata
@@ -94,7 +94,7 @@ impl PodApi {
             // Pod is sealed
             if is_sealed(&pod, &self.flavor.to_string())? {
                 if should_unseal {
-                    let mut pf = Retry::spawn(
+                    let mut pf = Retry::start(
                         ExponentialBackoff::from_millis(50).map(jitter).take(5),
                         || async move { self.http(name, VAULT_PORT).await },
                     )
@@ -171,10 +171,10 @@ impl StatefulSetApi {
         &self,
         sts: StatefulSet,
         pods: &PodApi,
-        token: Secret<String>,
+        token: SecretString,
         should_unseal: bool,
         force_upgrade: bool,
-        keys: &[Secret<String>],
+        keys: &[SecretString],
     ) -> anyhow::Result<()> {
         let target = VaultVersion::try_from(&sts)?;
 
@@ -236,13 +236,12 @@ impl StatefulSetApi {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
 
     use http::{Request, Response, StatusCode};
     use hyper::body::Bytes;
     use k8s_openapi::{api::core::v1::Pod, List};
     use kube::{client::Body, Api, Client};
-    use secrecy::Secret;
+    use secrecy::SecretString;
     use serde_yaml::Value;
     use tokio::task::JoinHandle;
     use tokio_util::sync::CancellationToken;
@@ -409,7 +408,7 @@ mod tests {
         pods.upgrade(
             pod,
             &target,
-            Secret::from_str("token").unwrap(),
+            SecretString::from("token"),
             false,
             false,
             &[],
@@ -444,7 +443,7 @@ mod tests {
         pods.upgrade(
             pod,
             &target,
-            Secret::from_str("token").unwrap(),
+            SecretString::from("token"),
             false,
             true,
             &[],

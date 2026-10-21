@@ -2,7 +2,7 @@ use clap::ValueEnum;
 use futures_util::StreamExt;
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::{Api, AttachParams, AttachedProcess};
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret, SecretString};
 use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
 
@@ -40,7 +40,7 @@ pub async fn exec(
     cmd: String,
     exec_in: ExecIn,
     flavor: Flavor,
-    env: HashMap<String, Secret<String>>,
+    env: HashMap<String, SecretString>,
 ) -> anyhow::Result<()> {
     let pods = api
         .list(
@@ -71,7 +71,7 @@ pub async fn exec_pod(
     api: &Api<Pod>,
     pod: &Pod,
     cmd: String,
-    env: HashMap<String, Secret<String>>,
+    env: HashMap<String, SecretString>,
 ) -> anyhow::Result<(String, String)> {
     let mut attached = api
         .exec(

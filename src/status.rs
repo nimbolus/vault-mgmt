@@ -1,7 +1,7 @@
 use http_body_util::{BodyExt, Empty};
 use hyper::body::Bytes;
 use kube::runtime::wait::Condition;
-use secrecy::Secret;
+use secrecy::SecretString;
 
 use crate::{raft_configuration_request, seal_status_request, BytesBody, HttpRequest};
 
@@ -134,13 +134,13 @@ pub trait GetRaftConfiguration {
     /// Get vault pod's raft configuration
     async fn raft_configuration(
         &mut self,
-        token: Secret<String>,
+        token: SecretString,
     ) -> anyhow::Result<RaftConfiguration>;
 
     /// Wait for vault pod's raft configuration to match the provided condition
     async fn await_raft_configuration(
         &mut self,
-        token: Secret<String>,
+        token: SecretString,
         cond: impl Condition<RaftConfiguration> + Send,
     ) -> Result<Option<RaftConfiguration>, anyhow::Error>;
 }
@@ -152,7 +152,7 @@ where
 {
     async fn raft_configuration(
         &mut self,
-        token: Secret<String>,
+        token: SecretString,
     ) -> anyhow::Result<RaftConfiguration> {
         let http_req = raft_configuration_request(token, Empty::<Bytes>::new().boxed())?;
 
@@ -169,7 +169,7 @@ where
 
     async fn await_raft_configuration(
         &mut self,
-        token: Secret<String>,
+        token: SecretString,
         cond: impl Condition<RaftConfiguration> + Send,
     ) -> Result<Option<RaftConfiguration>, anyhow::Error> {
         loop {
@@ -203,9 +203,8 @@ pub fn raft_configuration_all_voters() -> impl Condition<RaftConfiguration> {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
 
-    use secrecy::Secret;
+    use secrecy::SecretString;
     use wiremock::{
         matchers::{header, method, path},
         Mock, MockServer, ResponseTemplate,
@@ -566,7 +565,7 @@ mod tests {
         .unwrap();
 
         let config = client
-            .raft_configuration(Secret::from_str("abc").unwrap())
+            .raft_configuration(SecretString::from("abc"))
             .await
             .unwrap();
 
@@ -629,7 +628,7 @@ mod tests {
 
         let config = client
             .await_raft_configuration(
-                Secret::from_str("abc").unwrap(),
+                SecretString::from("abc"),
                 raft_configuration_any_leader(),
             )
             .await
@@ -658,7 +657,7 @@ mod tests {
 
         let config = client
             .await_raft_configuration(
-                Secret::from_str("abc").unwrap(),
+                SecretString::from("abc"),
                 raft_configuration_any_leader(),
             )
             .await
@@ -687,7 +686,7 @@ mod tests {
 
         let config = client
             .await_raft_configuration(
-                Secret::from_str("abc").unwrap(),
+                SecretString::from("abc"),
                 raft_configuration_all_voters(),
             )
             .await

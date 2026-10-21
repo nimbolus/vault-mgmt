@@ -3,7 +3,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 use k8s_openapi::api::apps::v1::StatefulSet;
 use kube::{api::Api, core::ObjectMeta, Client};
-use secrecy::Secret;
+use secrecy::SecretString;
 use self_update::cargo_crate_version;
 use std::collections::HashMap;
 use std::io;
@@ -103,7 +103,7 @@ enum Commands {
         /// vault token to use for retrieving the unseal keys
         /// if not provided, the token will be read from the VAULT_TOKEN environment variable
         #[arg(short = 't', long)]
-        token: Option<Secret<String>>,
+        token: Option<SecretString>,
 
         /// uri to vault kv secret containing the unseal keys.
         /// for example: `https://vault.example.com/v1/secret/data/vault/unseal-keys`.
@@ -123,7 +123,7 @@ enum Commands {
         /// vault token to use for the step down
         /// if not provided, the token will be read from the VAULT_TOKEN environment variable
         #[arg(short = 't', long)]
-        token: Option<Secret<String>>,
+        token: Option<SecretString>,
     },
 
     /// Wait until the statefulset is ready
@@ -139,7 +139,7 @@ enum Commands {
         /// vault token to use for the step down (and retrieving the unseal keys if configured)
         /// if not provided, the token will be read from the VAULT_TOKEN environment variable
         #[arg(short = 't', long)]
-        token: Option<Secret<String>>,
+        token: Option<SecretString>,
 
         /// Do not unseal the pods after upgrading.
         /// If this is specified, the upgrade process will wait for the pods to be unsealed externally.
@@ -414,7 +414,7 @@ fn is_homebrew_install(exe: &Path) -> bool {
         .any(|w| w[0] == "Cellar" && w[1] == "vault-mgmt")
 }
 
-fn get_token(arg: Option<Secret<String>>) -> anyhow::Result<Secret<String>> {
+fn get_token(arg: Option<SecretString>) -> anyhow::Result<SecretString> {
     match arg {
         Some(token) => Ok(token),
         None => Ok(std::env::var("VAULT_TOKEN")
@@ -426,7 +426,7 @@ fn get_token(arg: Option<Secret<String>>) -> anyhow::Result<Secret<String>> {
 fn collect_env(
     env_pairs: Vec<String>,
     env_var_keys: Vec<String>,
-) -> anyhow::Result<HashMap<String, Secret<String>>> {
+) -> anyhow::Result<HashMap<String, SecretString>> {
     let mut env = from_env(env_var_keys)?;
 
     for e in env_pairs {
@@ -437,17 +437,17 @@ fn collect_env(
         let v = split
             .next()
             .ok_or(anyhow::anyhow!("invalid key=value pair"))?;
-        env.insert(k.to_string(), Secret::from(v.to_string()));
+        env.insert(k.to_string(), SecretString::from(v.to_string()));
     }
 
     Ok(env)
 }
 
-fn from_env(env_var_keys: Vec<String>) -> anyhow::Result<HashMap<String, Secret<String>>> {
+fn from_env(env_var_keys: Vec<String>) -> anyhow::Result<HashMap<String, SecretString>> {
     let mut env = HashMap::new();
     for key in env_var_keys {
         let value = std::env::var(&key).map_err(|_| anyhow::anyhow!(format!("{} not set", key)))?;
-        env.insert(key, Secret::new(value));
+        env.insert(key, SecretString::from(value));
     }
     Ok(env)
 }

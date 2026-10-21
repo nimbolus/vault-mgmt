@@ -8,7 +8,7 @@ use hyper::{
 };
 use hyper_util::rt::TokioIo;
 use rustls::crypto::ring;
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret, SecretString};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::rustls::{pki_types, RootCertStore};
 use tracing::*;
@@ -133,7 +133,7 @@ pub(crate) fn vault_request() -> http::request::Builder {
         .header("x-Vault-Request", "true")
 }
 
-pub(crate) fn vault_request_with_token(token: Secret<String>) -> http::request::Builder {
+pub(crate) fn vault_request_with_token(token: SecretString) -> http::request::Builder {
     vault_request().header("X-Vault-Token", token.expose_secret())
 }
 
@@ -155,7 +155,7 @@ pub(crate) fn unseal_request(body: BytesBody) -> http::Result<Request<BytesBody>
 
 pub(crate) fn get_unseal_keys_request(
     path: &str,
-    token: Secret<String>,
+    token: SecretString,
 ) -> http::Result<Request<BytesBody>> {
     vault_request_with_token(token)
         .uri(path)
@@ -181,7 +181,7 @@ pub(crate) fn raft_join_request(body: BytesBody) -> http::Result<Request<BytesBo
 
 const RAFT_CONFIGURATION_URL: &str = "/v1/sys/storage/raft/configuration";
 pub(crate) fn raft_configuration_request(
-    token: Secret<String>,
+    token: SecretString,
     body: BytesBody,
 ) -> http::Result<Request<BytesBody>> {
     vault_request_with_token(token)
@@ -192,7 +192,7 @@ pub(crate) fn raft_configuration_request(
 
 const STEP_DOWN_URL: &str = "/v1/sys/step-down";
 pub(crate) fn step_down_request(
-    token: Secret<String>,
+    token: SecretString,
     body: BytesBody,
 ) -> http::Result<Request<BytesBody>> {
     vault_request_with_token(token)

@@ -3,7 +3,7 @@ use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::Api;
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret, SecretString};
 use tokio::process::Command;
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
 
 /// Get the unseal keys by running the specified command
 #[tracing::instrument()]
-pub async fn get_unseal_keys(key_cmd: &str) -> anyhow::Result<Vec<Secret<String>>> {
+pub async fn get_unseal_keys(key_cmd: &str) -> anyhow::Result<Vec<SecretString>> {
     let output = Command::new("sh").arg("-c").arg(key_cmd).output().await?;
 
     let stdout = String::from_utf8(output.stdout)?;
@@ -21,7 +21,7 @@ pub async fn get_unseal_keys(key_cmd: &str) -> anyhow::Result<Vec<Secret<String>
         .lines()
         .collect::<Vec<_>>()
         .iter()
-        .map(|k| Secret::new(k.to_string()))
+        .map(|k| SecretString::from(k.to_string()))
         .collect();
 
     Ok(keys)
@@ -40,7 +40,7 @@ pub async fn list_sealed_pods(api: &Api<Pod>, flavor: &str) -> anyhow::Result<Ve
 #[async_trait::async_trait]
 pub trait Unseal {
     /// Unseal a vault process using the provided keys
-    async fn unseal(&mut self, keys: &[Secret<String>]) -> anyhow::Result<()>;
+    async fn unseal(&mut self, keys: &[SecretString]) -> anyhow::Result<()>;
 }
 
 #[async_trait::async_trait]
@@ -48,7 +48,7 @@ impl<T> Unseal for T
 where
     T: HttpRequest<BytesBody> + Send + Sync + 'static,
 {
-    async fn unseal(&mut self, keys: &[Secret<String>]) -> anyhow::Result<()> {
+    async fn unseal(&mut self, keys: &[SecretString]) -> anyhow::Result<()> {
         if keys.is_empty() {
             return Err(anyhow::anyhow!("no keys provided"));
         }
@@ -84,8 +84,8 @@ pub trait GetUnsealKeys {
     async fn get_unseal_keys(
         &mut self,
         path: &http::uri::PathAndQuery,
-        token: Secret<String>,
-    ) -> anyhow::Result<Vec<Secret<String>>>;
+        token: SecretString,
+    ) -> anyhow::Result<Vec<SecretString>>;
 }
 
 #[async_trait::async_trait]
@@ -96,8 +96,8 @@ where
     async fn get_unseal_keys(
         &mut self,
         path: &http::uri::PathAndQuery,
-        token: Secret<String>,
-    ) -> anyhow::Result<Vec<Secret<String>>> {
+        token: SecretString,
+    ) -> anyhow::Result<Vec<SecretString>> {
         let req = get_unseal_keys_request(path.as_str(), token)?;
 
         let (parts, body) = self.send_request(req).await?.into_parts();
@@ -144,8 +144,8 @@ impl GetUnsealKeys for GetUnsealKeysFromVault {
     async fn get_unseal_keys(
         &mut self,
         path: &http::uri::PathAndQuery,
-        token: Secret<String>,
-    ) -> anyhow::Result<Vec<Secret<String>>> {
+        token: SecretString,
+    ) -> anyhow::Result<Vec<SecretString>> {
         let stream = tokio::net::TcpStream::connect((
             self.authority.host(),
             self.authority
@@ -173,7 +173,7 @@ impl GetUnsealKeys for GetUnsealKeysFromVault {
 }
 
 mod vault_kvget {
-    use secrecy::Secret;
+    use secrecy::SecretString;
     use serde::{Deserialize, Serialize};
 
     #[derive(Deserialize, Serialize, Debug)]
@@ -182,14 +182,14 @@ mod vault_kvget {
     }
 
     impl Response {
-        pub fn keys(&self) -> Vec<Secret<String>> {
+        pub fn keys(&self) -> Vec<SecretString> {
             self.data
                 .data
                 .keys
                 .lines()
                 .collect::<Vec<_>>()
                 .iter()
-                .map(|k| Secret::new(k.to_string()))
+                .map(|k| SecretString::from(k.to_string()))
                 .collect()
         }
     }
@@ -207,13 +207,12 @@ mod vault_kvget {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
 
     use http::{Method, Request, Response, StatusCode};
     use hyper::body::Bytes;
     use k8s_openapi::{api::core::v1::Pod, List};
     use kube::{client::Body, Api, Client};
-    use secrecy::Secret;
+    use secrecy::SecretString;
     use tokio::task::JoinHandle;
     use tokio_util::sync::CancellationToken;
     use tower_test::mock::{self, Handle};
@@ -361,9 +360,9 @@ mod tests {
 
         let outcome = client
             .unseal(&[
-                Secret::from_str("abc").unwrap(),
-                Secret::from_str("def").unwrap(),
-                Secret::from_str("ghi").unwrap(),
+                SecretString::from("abc"),
+                SecretString::from("def"),
+                SecretString::from("ghi"),
             ])
             .await;
 
@@ -427,7 +426,7 @@ mod tests {
         let outcome = client
             .get_unseal_keys(
                 uri.path_and_query().unwrap(),
-                Secret::new("token".to_string()),
+                SecretString::from("token".to_string()),
             )
             .await;
 
@@ -452,7 +451,7 @@ mod tests {
         let outcome = client
             .get_unseal_keys(
                 uri.path_and_query().unwrap(),
-                Secret::new("token".to_string()),
+                SecretString::from("token".to_string()),
             )
             .await;
 

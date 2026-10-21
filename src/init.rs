@@ -3,7 +3,7 @@ use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
 use k8s_openapi::api::core::v1::Pod;
 use kube::Api;
-use secrecy::Secret;
+use secrecy::SecretString;
 use tracing::*;
 
 use crate::{init_request, raft_join_request, BytesBody, Flavor, HttpRequest, PodApi, VAULT_PORT};
@@ -37,9 +37,9 @@ impl Default for InitRequest {
 
 #[derive(Clone, Debug, serde::Deserialize)]
 pub struct InitResult {
-    pub keys: Vec<Secret<String>>,
-    pub keys_base64: Vec<Secret<String>>,
-    pub root_token: Secret<String>,
+    pub keys: Vec<SecretString>,
+    pub keys_base64: Vec<SecretString>,
+    pub root_token: SecretString,
 }
 
 /// Init a vault process
