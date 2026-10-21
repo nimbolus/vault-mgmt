@@ -33,8 +33,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - platform: ubuntu-latest
+          - platform: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
+          - platform: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
           - platform: macos-latest
             target: x86_64-apple-darwin
           - platform: macos-latest
