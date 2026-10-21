@@ -8,15 +8,13 @@ use crate::Flavor;
 #[must_use]
 pub fn is_statefulset_ready() -> impl Condition<StatefulSet> {
     |obj: Option<&StatefulSet>| {
-        if let Some(sts) = &obj {
-            if let Some(status) = &sts.status {
-                return match (status.ready_replicas, status.available_replicas) {
-                    (Some(ready), Some(available)) => {
-                        ready == available && ready == status.replicas
-                    }
-                    _ => false,
-                };
-            }
+        if let Some(sts) = &obj
+            && let Some(status) = &sts.status
+        {
+            return match (status.ready_replicas, status.available_replicas) {
+                (Some(ready), Some(available)) => ready == available && ready == status.replicas,
+                _ => false,
+            };
         }
         false
     }
@@ -27,12 +25,11 @@ pub fn is_statefulset_ready() -> impl Condition<StatefulSet> {
 #[must_use]
 pub fn is_statefulset_updated() -> impl Condition<StatefulSet> {
     |obj: Option<&StatefulSet>| {
-        if let Some(sts) = &obj {
-            if let Some(status) = &sts.status {
-                if let Some(updated) = status.updated_replicas {
-                    return updated != status.replicas;
-                }
-            }
+        if let Some(sts) = &obj
+            && let Some(status) = &sts.status
+            && let Some(updated) = status.updated_replicas
+        {
+            return updated != status.replicas;
         }
         false
     }
@@ -42,22 +39,21 @@ pub fn is_statefulset_updated() -> impl Condition<StatefulSet> {
 #[must_use]
 pub fn statefulset_has_version(version: String, flavor: Flavor) -> impl Condition<StatefulSet> {
     move |obj: Option<&StatefulSet>| {
-        if let Some(sts) = &obj {
-            if let Some(spec) = &sts.spec {
-                if let Some(tpl_spec) = &spec.template.spec {
-                    return tpl_spec
-                        .containers
-                        .iter()
-                        .filter_map(|c| {
-                            if c.name == flavor.to_string() {
-                                c.image.clone()
-                            } else {
-                                None
-                            }
-                        })
-                        .all(|image| image.ends_with(&format!(":{}", version)));
-                }
-            }
+        if let Some(sts) = &obj
+            && let Some(spec) = &sts.spec
+            && let Some(tpl_spec) = &spec.template.spec
+        {
+            return tpl_spec
+                .containers
+                .iter()
+                .filter_map(|c| {
+                    if c.name == flavor.to_string() {
+                        c.image.clone()
+                    } else {
+                        None
+                    }
+                })
+                .all(|image| image.ends_with(&format!(":{}", version)));
         }
         false
     }
@@ -67,14 +63,13 @@ pub fn statefulset_has_version(version: String, flavor: Flavor) -> impl Conditio
 #[must_use]
 pub fn is_pod_ready() -> impl Condition<Pod> {
     |obj: Option<&Pod>| {
-        if let Some(pod) = &obj {
-            if let Some(status) = &pod.status {
-                if let Some(ref conditions) = status.conditions {
-                    return conditions
-                        .iter()
-                        .any(|c| c.type_ == "Ready" && c.status == "True");
-                }
-            }
+        if let Some(pod) = &obj
+            && let Some(status) = &pod.status
+            && let Some(ref conditions) = status.conditions
+        {
+            return conditions
+                .iter()
+                .any(|c| c.type_ == "Ready" && c.status == "True");
         }
         false
     }
@@ -85,10 +80,10 @@ pub fn is_pod_ready() -> impl Condition<Pod> {
 #[must_use]
 pub fn is_pod_exporting_seal_status(flavor: Flavor) -> impl Condition<Pod> {
     move |obj: Option<&Pod>| {
-        if let Some(pod) = &obj {
-            if let Some(labels) = &pod.metadata.labels {
-                return labels.get(&format!("{}-sealed", flavor)).is_some();
-            }
+        if let Some(pod) = &obj
+            && let Some(labels) = &pod.metadata.labels
+        {
+            return labels.get(&format!("{}-sealed", flavor)).is_some();
         }
         false
     }
@@ -106,12 +101,11 @@ pub fn is_pod_unsealed(flavor: Flavor) -> impl Condition<Pod> {
 #[must_use]
 pub fn is_pod_sealed(flavor: Flavor) -> impl Condition<Pod> {
     move |obj: Option<&Pod>| {
-        if let Some(pod) = &obj {
-            if let Some(labels) = &pod.metadata.labels {
-                if let Some(sealed) = labels.get(&format!("{}-sealed", flavor)) {
-                    return sealed.as_str() == "true";
-                }
-            }
+        if let Some(pod) = &obj
+            && let Some(labels) = &pod.metadata.labels
+            && let Some(sealed) = labels.get(&format!("{}-sealed", flavor))
+        {
+            return sealed.as_str() == "true";
         }
         false
     }
@@ -122,12 +116,11 @@ pub fn is_pod_sealed(flavor: Flavor) -> impl Condition<Pod> {
 #[must_use]
 pub fn is_pod_active(flavor: Flavor) -> impl Condition<Pod> {
     move |obj: Option<&Pod>| {
-        if let Some(pod) = &obj {
-            if let Some(labels) = &pod.metadata.labels {
-                if let Some(active) = labels.get(&format!("{}-active", flavor)) {
-                    return active.as_str() == "true";
-                }
-            }
+        if let Some(pod) = &obj
+            && let Some(labels) = &pod.metadata.labels
+            && let Some(active) = labels.get(&format!("{}-active", flavor))
+        {
+            return active.as_str() == "true";
         }
         false
     }

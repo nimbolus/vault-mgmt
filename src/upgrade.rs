@@ -70,15 +70,13 @@ impl PodApi {
                 &DeleteParams::default(),
             )
             .await
-            .map_err(|e| anyhow::anyhow!("deleting pod {}: {}", name, e.to_string()))?;
+            .map_err(|e| anyhow::anyhow!("deleting pod {}: {}", name, e))?;
         }
 
         // Wait for pod to be running
         kube::runtime::wait::await_condition(self.api.clone(), name, is_pod_running())
             .await
-            .map_err(|e| {
-                anyhow::anyhow!("waiting for pod {} to be running: {}", name, e.to_string())
-            })?;
+            .map_err(|e| anyhow::anyhow!("waiting for pod {} to be running: {}", name, e))?;
 
         // Wait for pod to export its seal status
         kube::runtime::wait::await_condition(
@@ -101,11 +99,7 @@ impl PodApi {
                     )
                     .await
                     .map_err(|e| {
-                        anyhow::anyhow!(
-                            "attempting to forward http requests to {}: {}",
-                            name,
-                            e.to_string()
-                        )
+                        anyhow::anyhow!("attempting to forward http requests to {}: {}", name, e)
                     })?;
 
                     // Wait for pod to have determined its seal status
@@ -115,14 +109,14 @@ impl PodApi {
                             anyhow::anyhow!(
                                 "waiting for pod to have required seal status {}: {}",
                                 name,
-                                e.to_string()
+                                e
                             )
                         })?;
 
                     // Unseal pod
-                    pf.unseal(keys).await.map_err(|e| {
-                        anyhow::anyhow!("unsealing pod {}: {}", name, e.to_string())
-                    })?;
+                    pf.unseal(keys)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("unsealing pod {}: {}", name, e))?;
                 } else {
                     info!("pod {} is sealed, waiting for external unseal", name);
                 }

@@ -15,10 +15,10 @@ pub async fn init_unseal_cluster(
     name: &str,
 ) -> anyhow::Result<InitResult> {
     kube::runtime::wait::await_condition(stss.clone(), name, |obj: Option<&StatefulSet>| {
-        if let Some(sts) = &obj {
-            if let Some(status) = &sts.status {
-                return status.replicas == 3;
-            }
+        if let Some(sts) = &obj
+            && let Some(status) = &sts.status
+        {
+            return status.replicas == 3;
         }
         false
     })
@@ -27,7 +27,7 @@ pub async fn init_unseal_cluster(
     let pod_list = pods
         .list(
             &ListParams::default()
-                .labels(&format!("app.kubernetes.io/instance={}", &name))
+                .labels(&format!("app.kubernetes.io/instance={}", name))
                 .labels("component=server"),
         )
         .await?;
@@ -45,14 +45,14 @@ pub async fn init_unseal_cluster(
             }
 
             fn has_label(pod: &Pod, label: &str, value: Option<&str>) -> bool {
-                if let Some(labels) = &pod.metadata.labels {
-                    if let Some(v) = labels.get(label) {
-                        if let Some(value) = value {
-                            return v == value;
-                        }
-
-                        return true;
+                if let Some(labels) = &pod.metadata.labels
+                    && let Some(v) = labels.get(label)
+                {
+                    if let Some(value) = value {
+                        return v == value;
                     }
+
+                    return true;
                 }
                 false
             }
@@ -81,7 +81,7 @@ pub async fn init_unseal_cluster(
         task.unwrap().unwrap();
     }
 
-    let first = format!("{}-0", &name);
+    let first = format!("{}-0", name);
 
     let mut pf = PodApi::new(
         pods.clone(),
@@ -119,7 +119,7 @@ pub async fn init_unseal_cluster(
             "".to_string(),
             vault_mgmt_lib::Flavor::OpenBao,
         )
-        .http(&format!("{}-{}", &name, pod), VAULT_PORT)
+        .http(&format!("{}-{}", name, pod), VAULT_PORT)
         .await?;
 
         pf.await_seal_status(is_seal_status_initialized()).await?;

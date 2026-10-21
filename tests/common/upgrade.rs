@@ -296,7 +296,7 @@ pub async fn upgrade_pod_succeeds_with_external_unseal(
     tokio::spawn(async move {
         kube::runtime::wait::await_condition(
             pods_unseal.api.clone(),
-            &format!("{}-1", &name_unseal),
+            &format!("{}-1", name_unseal),
             is_deleted(&uid),
         )
         .await
@@ -304,14 +304,14 @@ pub async fn upgrade_pod_succeeds_with_external_unseal(
 
         kube::runtime::wait::await_condition(
             pods_unseal.api.clone(),
-            &format!("{}-1", &name_unseal),
+            &format!("{}-1", name_unseal),
             is_pod_sealed(flavor),
         )
         .await
         .unwrap();
 
         pods_unseal
-            .http(&format!("{}-1", &name_unseal), VAULT_PORT)
+            .http(&format!("{}-1", name_unseal), VAULT_PORT)
             .await
             .unwrap()
             .unseal(&init_unseal.keys)

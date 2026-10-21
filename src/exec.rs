@@ -28,9 +28,9 @@ impl std::fmt::Display for ExecIn {
 impl ExecIn {
     pub fn to_label_selector(&self, flavor: &str) -> String {
         match self {
-            ExecIn::Active => format!("{}=true", &format!("{}-active", flavor)),
-            ExecIn::Standby => format!("{}=false", &format!("{}-active", flavor)),
-            ExecIn::Sealed => format!("{}=true", &format!("{}-sealed", flavor)),
+            ExecIn::Active => format!("{}-active=true", flavor),
+            ExecIn::Standby => format!("{}-active=false", flavor),
+            ExecIn::Sealed => format!("{}-sealed=true", flavor),
         }
     }
 }

@@ -17,8 +17,8 @@ pub fn is_sealed(pod: &Pod, flavor: &str) -> anyhow::Result<bool> {
             Some(x) if x.as_str() == "true" => Ok(true),
             Some(x) if x.as_str() == "false" => Ok(false),
             _ => Err(anyhow::anyhow!(
-                "pod does not have a {} label",
-                &format!("{}-sealed", flavor)
+                "pod does not have a {}-sealed label",
+                flavor
             )),
         },
     }
@@ -33,8 +33,8 @@ pub fn is_active(pod: &Pod, flavor: &str) -> anyhow::Result<bool> {
             Some(x) if x.as_str() == "true" => Ok(true),
             Some(x) if x.as_str() == "false" => Ok(false),
             _ => Err(anyhow::anyhow!(
-                "pod does not have a {} label",
-                &format!("{}-active", flavor)
+                "pod does not have a {}-active label",
+                flavor
             )),
         },
     }
