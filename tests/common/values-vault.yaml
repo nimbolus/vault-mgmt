@@ -1,6 +1,9 @@
 fullnameOverride: "" # set by tests
 
 server:
+  image:
+    # fully qualified, cri-o refuses ambiguous short names
+    repository: docker.io/hashicorp/vault
   affinity: ""
   ha:
     enabled: true
