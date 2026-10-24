@@ -2,19 +2,21 @@ use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Pod;
-use kube::{Api, api::ListParams};
+use kube::Api;
 
 use vault_mgmt_lib::{
-    PodApi, Unseal, VAULT_PORT, {GetSealStatus, is_seal_status_initialized},
-    {Init, InitRequest, InitResult}, {is_pod_ready, is_statefulset_ready},
+    Flavor, PodApi, Unseal, VAULT_PORT, list_vault_pods, retry_request, wait_for,
+    {GetSealStatus, is_seal_status_initialized}, {Init, InitRequest, InitResult},
+    {is_pod_ready, is_statefulset_ready},
 };
 
 pub async fn init_unseal_cluster(
     pods: &Api<Pod>,
     stss: &Api<StatefulSet>,
     name: &str,
+    flavor: Flavor,
 ) -> anyhow::Result<InitResult> {
-    kube::runtime::wait::await_condition(stss.clone(), name, |obj: Option<&StatefulSet>| {
+    let sts = wait_for(stss, name, |obj: Option<&StatefulSet>| {
         if let Some(sts) = &obj
             && let Some(status) = &sts.status
         {
@@ -22,58 +24,43 @@ pub async fn init_unseal_cluster(
         }
         false
     })
-    .await?;
+    .await?
+    .ok_or(anyhow::anyhow!("statefulset {} not found", name))?;
 
-    let pod_list = pods
-        .list(
-            &ListParams::default()
-                .labels(&format!("app.kubernetes.io/instance={}", name))
-                .labels("component=server"),
-        )
-        .await?;
+    // only the pods of this statefulset, other tests run in the same namespace
+    let lp = list_vault_pods(&sts)?;
+    let pod_list = retry_request("listing pods", || pods.list(&lp)).await?;
 
     let mut tasks = FuturesUnordered::new();
 
-    fn is_labelled(obj: Option<&Pod>) -> bool {
-        if let Some(pod) = obj {
-            match &pod.status {
-                Some(status) => match &status.phase {
-                    Some(phase) if phase == "Running" => {}
-                    _ => return false,
-                },
+    // running and exporting its seal status via service registration labels
+    let is_labelled = move |obj: Option<&Pod>| {
+        let Some(pod) = obj else {
+            return false;
+        };
+
+        match &pod.status {
+            Some(status) => match &status.phase {
+                Some(phase) if phase == "Running" => {}
                 _ => return false,
-            }
-
-            fn has_label(pod: &Pod, label: &str, value: Option<&str>) -> bool {
-                if let Some(labels) = &pod.metadata.labels
-                    && let Some(v) = labels.get(label)
-                {
-                    if let Some(value) = value {
-                        return v == value;
-                    }
-
-                    return true;
-                }
-                false
-            }
-
-            if !has_label(pod, "openbao-initialized", None)
-                || !has_label(pod, "openbao-sealed", None)
-                || !has_label(pod, "openbao-active", None)
-            {
-                return false;
-            }
-
-            return true;
+            },
+            _ => return false,
         }
-        false
-    }
+
+        let Some(labels) = &pod.metadata.labels else {
+            return false;
+        };
+
+        ["initialized", "sealed", "active"]
+            .iter()
+            .all(|label| labels.contains_key(&format!("{}-{}", flavor, label)))
+    };
 
     for p in pod_list {
         let pods = pods.clone();
         let pod_name = p.metadata.name.unwrap();
         tasks.push(tokio::spawn(async move {
-            kube::runtime::wait::await_condition(pods, &pod_name, is_labelled).await
+            wait_for(&pods, &pod_name, is_labelled).await
         }));
     }
 
@@ -83,15 +70,10 @@ pub async fn init_unseal_cluster(
 
     let first = format!("{}-0", name);
 
-    let mut pf = PodApi::new(
-        pods.clone(),
-        false,
-        "".to_string(),
-        vault_mgmt_lib::Flavor::OpenBao,
-    )
-    .http(&first, VAULT_PORT)
-    .await
-    .unwrap();
+    let mut pf = PodApi::new(pods.clone(), false, "".to_string(), flavor)
+        .http(&first, VAULT_PORT)
+        .await
+        .unwrap();
 
     // initialize vault
     let init_result = pf.init(InitRequest::default()).await?;
@@ -107,20 +89,15 @@ pub async fn init_unseal_cluster(
 
     println!("first pod unsealed");
 
-    kube::runtime::wait::await_condition(pods.clone(), &first, is_pod_ready()).await?;
+    wait_for(pods, &first, is_pod_ready()).await?;
 
     println!("first pod ready");
 
     // unseal other pods
     for pod in [1, 2] {
-        let mut pf = PodApi::new(
-            pods.clone(),
-            false,
-            "".to_string(),
-            vault_mgmt_lib::Flavor::OpenBao,
-        )
-        .http(&format!("{}-{}", name, pod), VAULT_PORT)
-        .await?;
+        let mut pf = PodApi::new(pods.clone(), false, "".to_string(), flavor)
+            .http(&format!("{}-{}", name, pod), VAULT_PORT)
+            .await?;
 
         pf.await_seal_status(is_seal_status_initialized()).await?;
 
@@ -131,7 +108,7 @@ pub async fn init_unseal_cluster(
         println!("pod {} unsealed", pod);
     }
 
-    kube::runtime::wait::await_condition(stss.clone(), name, is_statefulset_ready()).await?;
+    wait_for(stss, name, is_statefulset_ready()).await?;
 
     println!("statefulset {} ready", name);
 

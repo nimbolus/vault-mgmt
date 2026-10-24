@@ -6,7 +6,10 @@ use kube::{
     runtime::conditions::is_deleted,
 };
 
-use vault_mgmt_lib::{Flavor, Unseal, VAULT_PORT, VaultVersion, is_pod_sealed};
+use vault_mgmt_lib::{
+    Flavor, GetSealStatus, Unseal, VAULT_PORT, VaultVersion, is_pod_sealed,
+    is_seal_status_initialized, retry_request, wait_for,
+};
 
 use super::setup::{setup, teardown};
 
@@ -14,8 +17,13 @@ pub async fn upgrade_pod_succeeds_if_already_current(version_current: &str, flav
     let (namespace, name, _, stss, init, pods) =
         setup(flavor, "upgrade-noop", version_current).await;
 
-    let sts = stss.get(&name).await.unwrap();
-    let pod = pods.api.get(&format!("{}-0", name)).await.unwrap();
+    let sts = retry_request("getting statefulset", || stss.get(&name))
+        .await
+        .unwrap();
+    let pod_name = format!("{}-0", name);
+    let pod = retry_request("getting pod", || pods.api.get(&pod_name))
+        .await
+        .unwrap();
 
     pods.upgrade(
         pod,
@@ -38,8 +46,13 @@ pub async fn upgrade_pod_succeeds_if_already_current_with_force_upgrade(
     let (namespace, name, _, stss, init, pods) =
         setup(flavor, "upgrade-force", version_current).await;
 
-    let sts = stss.get(&name).await.unwrap();
-    let pod = pods.api.get(&format!("{}-1", name)).await.unwrap();
+    let sts = retry_request("getting statefulset", || stss.get(&name))
+        .await
+        .unwrap();
+    let pod_name = format!("{}-1", name);
+    let pod = retry_request("getting pod", || pods.api.get(&pod_name))
+        .await
+        .unwrap();
 
     pods.upgrade(
         pod,
@@ -64,7 +77,10 @@ pub async fn upgrade_pod_succeeds_if_outdated_and_standby(
     let (namespace, name, _, stss, init, pods) =
         setup(flavor, "upgrade-outdated-stby", version_old).await;
 
-    match stss.entry(&name).await.unwrap() {
+    match retry_request("getting statefulset", || stss.entry(&name))
+        .await
+        .unwrap()
+    {
         Entry::Occupied(sts) => {
             sts.and_modify(|sts| {
                 for container in sts
@@ -91,8 +107,13 @@ pub async fn upgrade_pod_succeeds_if_outdated_and_standby(
         _ => panic!("statefulset not found"),
     }
 
-    let sts = stss.get(&name).await.unwrap();
-    let pod = pods.api.get(&format!("{}-1", name)).await.unwrap();
+    let sts = retry_request("getting statefulset", || stss.get(&name))
+        .await
+        .unwrap();
+    let pod_name = format!("{}-1", name);
+    let pod = retry_request("getting pod", || pods.api.get(&pod_name))
+        .await
+        .unwrap();
 
     assert_eq!(
         VaultVersion::try_from(&pod).unwrap(),
@@ -110,7 +131,10 @@ pub async fn upgrade_pod_succeeds_if_outdated_and_standby(
     .await
     .unwrap();
 
-    let pod = pods.api.get(&format!("{}-1", name)).await.unwrap();
+    let pod_name = format!("{}-1", name);
+    let pod = retry_request("getting pod", || pods.api.get(&pod_name))
+        .await
+        .unwrap();
     assert_eq!(
         VaultVersion::try_from(&pod).unwrap(),
         VaultVersion::from_str(version_current).unwrap()
@@ -128,7 +152,10 @@ pub async fn upgrade_pod_succeeds_if_outdated_and_active(
     let (namespace, name, _, stss, init, pods) =
         setup(flavor, "upgrade-outdated-act", version_old).await;
 
-    match stss.entry(&name).await.unwrap() {
+    match retry_request("getting statefulset", || stss.entry(&name))
+        .await
+        .unwrap()
+    {
         Entry::Occupied(sts) => {
             sts.and_modify(|sts| {
                 for container in sts
@@ -155,8 +182,13 @@ pub async fn upgrade_pod_succeeds_if_outdated_and_active(
         _ => panic!("statefulset not found"),
     }
 
-    let sts = stss.get(&name).await.unwrap();
-    let pod = pods.api.get(&format!("{}-0", name)).await.unwrap();
+    let sts = retry_request("getting statefulset", || stss.get(&name))
+        .await
+        .unwrap();
+    let pod_name = format!("{}-0", name);
+    let pod = retry_request("getting pod", || pods.api.get(&pod_name))
+        .await
+        .unwrap();
 
     assert_eq!(
         VaultVersion::try_from(&pod).unwrap(),
@@ -174,7 +206,10 @@ pub async fn upgrade_pod_succeeds_if_outdated_and_active(
     .await
     .unwrap();
 
-    let pod = pods.api.get(&format!("{}-0", name)).await.unwrap();
+    let pod_name = format!("{}-0", name);
+    let pod = retry_request("getting pod", || pods.api.get(&pod_name))
+        .await
+        .unwrap();
     assert_eq!(
         VaultVersion::try_from(&pod).unwrap(),
         VaultVersion::from_str(version_current).unwrap()
@@ -192,7 +227,10 @@ pub async fn upgrade_pod_succeeds_fails_with_missing_external_unseal(
     let (namespace, name, _, stss, init, pods) =
         setup(flavor, "upgrade-miss-ext-unseal", version_old).await;
 
-    match stss.entry(&name).await.unwrap() {
+    match retry_request("getting statefulset", || stss.entry(&name))
+        .await
+        .unwrap()
+    {
         Entry::Occupied(sts) => {
             sts.and_modify(|sts| {
                 for container in sts
@@ -219,8 +257,13 @@ pub async fn upgrade_pod_succeeds_fails_with_missing_external_unseal(
         _ => panic!("statefulset not found"),
     }
 
-    let sts = stss.get(&name).await.unwrap();
-    let pod = pods.api.get(&format!("{}-1", name)).await.unwrap();
+    let sts = retry_request("getting statefulset", || stss.get(&name))
+        .await
+        .unwrap();
+    let pod_name = format!("{}-1", name);
+    let pod = retry_request("getting pod", || pods.api.get(&pod_name))
+        .await
+        .unwrap();
 
     assert_eq!(
         VaultVersion::try_from(&pod).unwrap(),
@@ -253,7 +296,10 @@ pub async fn upgrade_pod_succeeds_with_external_unseal(
     let (namespace, name, _, stss, init, pods) =
         setup(flavor, "upgrade-with-ext-unseal", version_old).await;
 
-    match stss.entry(&name).await.unwrap() {
+    match retry_request("getting statefulset", || stss.entry(&name))
+        .await
+        .unwrap()
+    {
         Entry::Occupied(sts) => {
             sts.and_modify(|sts| {
                 for container in sts
@@ -280,8 +326,13 @@ pub async fn upgrade_pod_succeeds_with_external_unseal(
         _ => panic!("statefulset not found"),
     }
 
-    let sts = stss.get(&name).await.unwrap();
-    let pod = pods.api.get(&format!("{}-1", name)).await.unwrap();
+    let sts = retry_request("getting statefulset", || stss.get(&name))
+        .await
+        .unwrap();
+    let pod_name = format!("{}-1", name);
+    let pod = retry_request("getting pod", || pods.api.get(&pod_name))
+        .await
+        .unwrap();
 
     assert_eq!(
         VaultVersion::try_from(&pod).unwrap(),
@@ -294,29 +345,34 @@ pub async fn upgrade_pod_succeeds_with_external_unseal(
     let init_unseal = init.clone();
 
     tokio::spawn(async move {
-        kube::runtime::wait::await_condition(
-            pods_unseal.api.clone(),
+        wait_for(
+            &pods_unseal.api,
             &format!("{}-1", name_unseal),
             is_deleted(&uid),
         )
         .await
         .unwrap();
 
-        kube::runtime::wait::await_condition(
-            pods_unseal.api.clone(),
+        wait_for(
+            &pods_unseal.api,
             &format!("{}-1", name_unseal),
             is_pod_sealed(flavor),
         )
         .await
         .unwrap();
 
-        pods_unseal
+        let mut pf = pods_unseal
             .http(&format!("{}-1", name_unseal), VAULT_PORT)
             .await
-            .unwrap()
-            .unseal(&init_unseal.keys)
+            .unwrap();
+
+        // the new pod starts without data and has to join the raft cluster
+        // before it can be unsealed, like the upgrade does
+        pf.await_seal_status(is_seal_status_initialized())
             .await
             .unwrap();
+
+        pf.unseal(&init_unseal.keys).await.unwrap();
     });
 
     pods.upgrade(

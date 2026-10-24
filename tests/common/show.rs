@@ -1,11 +1,13 @@
-use vault_mgmt_lib::{Flavor, construct_table};
+use vault_mgmt_lib::{Flavor, construct_table, retry_request};
 
 use super::setup::{setup, teardown};
 
 pub async fn show_succeeds(version_current: &str, flavor: Flavor) {
     let (namespace, name, pods, stss, _, _) = setup(flavor, "show", version_current).await;
 
-    let sts = stss.get(&name).await.unwrap();
+    let sts = retry_request("getting statefulset", || stss.get(&name))
+        .await
+        .unwrap();
     let table = construct_table(&pods, &sts, flavor).await.unwrap();
 
     let mut buf = Vec::new();

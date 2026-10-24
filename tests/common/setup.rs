@@ -20,6 +20,16 @@ pub async fn setup_crypto_provider() {
             rustls::crypto::ring::default_provider()
                 .install_default()
                 .unwrap();
+
+            // show retries of flaky kubernetes api connections
+            let _ = tracing_subscriber::fmt()
+                .with_env_filter(
+                    tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                        tracing_subscriber::EnvFilter::new("vault_mgmt_lib=warn")
+                    }),
+                )
+                .with_test_writer()
+                .try_init();
         })
         .await;
 }
@@ -57,7 +67,7 @@ pub(crate) async fn setup(
     let pods = Api::namespaced(client.clone(), &namespace);
     let stss = Api::namespaced(client.clone(), &namespace);
 
-    let init = prepare::init_unseal_cluster(&pods, &stss, &name)
+    let init = prepare::init_unseal_cluster(&pods, &stss, &name, flavor)
         .await
         .unwrap();
 
@@ -70,12 +80,7 @@ pub(crate) async fn setup(
         &init.root_token.expose_secret()
     );
 
-    let pod_api = PodApi::new(
-        pods.clone(),
-        false,
-        "".to_string(),
-        vault_mgmt_lib::Flavor::OpenBao,
-    );
+    let pod_api = PodApi::new(pods.clone(), false, "".to_string(), flavor);
 
     let mut pf = pod_api
         .http(&format!("{}-0", name), VAULT_PORT)
