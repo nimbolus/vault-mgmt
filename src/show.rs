@@ -2,7 +2,7 @@ use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
 use kube::api::Api;
 use prettytable::{Attr, Cell, Row, Table, color};
 
-use crate::{Flavor, list_vault_pods};
+use crate::{Flavor, list_vault_pods, retry_request};
 
 #[tracing::instrument(skip_all)]
 pub async fn construct_table(
@@ -22,7 +22,7 @@ pub async fn construct_table(
     ]);
 
     let lp = list_vault_pods(sts)?;
-    let pods = api.list(&lp).await?;
+    let pods = retry_request("listing vault pods", || api.list(&lp)).await?;
 
     let get_vault_label = |pod: &Pod, label: &str| match pod.metadata.labels {
         Some(ref labels) => labels

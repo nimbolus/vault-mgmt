@@ -8,7 +8,7 @@ use tokio::process::Command;
 
 use crate::{
     BytesBody, ExecIn, Flavor, HttpForwarderService, HttpRequest, get_unseal_keys_request,
-    list_vault_pods_in, unseal_request,
+    list_vault_pods_in, retry_request, unseal_request,
 };
 
 /// Get the unseal keys by running the specified command
@@ -34,7 +34,7 @@ pub async fn list_sealed_pods(
     flavor: Flavor,
 ) -> anyhow::Result<Vec<Pod>> {
     let lp = list_vault_pods_in(sts, flavor, ExecIn::Sealed)?;
-    let pods = api.list(&lp).await?;
+    let pods = retry_request("listing sealed pods", || api.list(&lp)).await?;
 
     Ok(pods.items)
 }

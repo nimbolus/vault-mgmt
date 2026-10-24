@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
 use tracing::*;
 
-use crate::{Flavor, list_vault_pods_in};
+use crate::{Flavor, list_vault_pods_in, retry_request};
 
 #[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ExecIn {
@@ -49,7 +49,7 @@ pub async fn exec(
     env: HashMap<String, SecretString>,
 ) -> anyhow::Result<()> {
     let lp = list_vault_pods_in(sts, flavor, exec_in)?;
-    let pods = api.list(&lp).await?;
+    let pods = retry_request("listing vault pods", || api.list(&lp)).await?;
     let pod = pods
         .items
         .first()

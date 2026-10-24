@@ -15,8 +15,8 @@ use vault_mgmt_lib::Flavor;
 
 use vault_mgmt_lib::{
     GetUnsealKeys, GetUnsealKeysFromVault, StepDown, VAULT_PORT, construct_table,
-    is_statefulset_ready, {ExecIn, exec}, {PodApi, StatefulSetApi, list_vault_pods_in},
-    {Unseal, get_unseal_keys, list_sealed_pods},
+    is_statefulset_ready, retry_request, wait_for, {ExecIn, exec},
+    {PodApi, StatefulSetApi, list_vault_pods_in}, {Unseal, get_unseal_keys, list_sealed_pods},
 };
 
 /// Manage your vault installation in Kubernetes
@@ -220,9 +220,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::StepDown { token } => {
             let api = setup_api(&cli.namespace).await?;
             let sts = get_statefulset(&cli.namespace, &cli.statefulset).await?;
-            let active = api
-                .list(&list_vault_pods_in(&sts, cli.flavor, ExecIn::Active)?)
-                .await?;
+            let lp = list_vault_pods_in(&sts, cli.flavor, ExecIn::Active)?;
+            let active = retry_request("listing active pods", || api.list(&lp)).await?;
             let active = active.iter().next().ok_or(anyhow::anyhow!(
                 "no active vault pod found. is vault sealed?"
             ))?;
@@ -243,12 +242,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::WaitUntilReady {} => {
             let api: Api<StatefulSet> = setup_api(&cli.namespace).await?;
-            kube::runtime::wait::await_condition(
-                api.clone(),
-                &cli.statefulset,
-                is_statefulset_ready(),
-            )
-            .await?;
+            wait_for(&api, &cli.statefulset, is_statefulset_ready()).await?;
         }
         Commands::Unseal {
             token,
@@ -348,7 +342,7 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::bail!("no keys secret uri or key cmd specified")
             }
 
-            let sts = stss.get(&cli.statefulset).await?;
+            let sts = retry_request("getting statefulset", || stss.get(&cli.statefulset)).await?;
 
             StatefulSetApi::new(stss.clone(), cli.flavor)
                 .upgrade(
@@ -361,8 +355,8 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .await?;
 
-            kube::runtime::wait::await_condition(
-                stss.clone(),
+            wait_for(
+                &stss,
                 &sts.metadata
                     .name
                     .clone()
@@ -456,7 +450,7 @@ fn from_env(env_var_keys: Vec<String>) -> anyhow::Result<HashMap<String, SecretS
 /// Get the statefulset vault runs in. Its selector decides which pods are managed.
 async fn get_statefulset(namespace: &str, name: &str) -> anyhow::Result<StatefulSet> {
     let api: Api<StatefulSet> = setup_api(namespace).await?;
-    Ok(api.get(name).await?)
+    retry_request(&format!("getting statefulset {}", name), || api.get(name)).await
 }
 
 async fn setup_api<T>(namespace: &str) -> anyhow::Result<Api<T>>

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use secrecy::SecretString;
-use vault_mgmt_lib::{exec_pod, Flavor};
+use vault_mgmt_lib::{Flavor, exec_pod, retry_request};
 
 use super::setup::{setup, teardown};
 
@@ -9,7 +9,9 @@ pub async fn exec_pod_succeeds(version_current: &str, flavor: Flavor) {
     let (namespace, name, pods, _, _, _) = setup(flavor, "exec", version_current).await;
 
     let pod_name = format!("{}-0", name);
-    let pod = pods.get(&pod_name).await.unwrap();
+    let pod = retry_request("getting pod", || pods.get(&pod_name))
+        .await
+        .unwrap();
 
     let (stdout, stderr) = exec_pod(
         &pods,

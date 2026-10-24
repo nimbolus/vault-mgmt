@@ -2,7 +2,7 @@ use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
 use kube::{Api, api::ListParams, core::Selector};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::{BytesBody, ExecIn, HttpForwarderService};
+use crate::{BytesBody, ExecIn, HttpForwarderService, retry_request};
 
 /// The selector of the pods managed by the statefulset
 fn pod_selector(sts: &StatefulSet) -> anyhow::Result<Selector> {
@@ -133,7 +133,11 @@ impl PodApi {
         pod: &str,
         port: u16,
     ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + use<>> {
-        let mut pf = self.api.portforward(pod, &[port]).await?;
+        let ports = [port];
+        let mut pf = retry_request(&format!("forwarding port {} of pod {}", port, pod), || {
+            self.api.portforward(pod, &ports)
+        })
+        .await?;
         pf.take_stream(port).ok_or(anyhow::anyhow!(
             "port {} is not available on pod {}",
             port,

@@ -75,6 +75,7 @@ hyper-util = { version = "0.1.11", features = [
 rustls-native-certs = "0.8.1"
 
 [dev-dependencies]
+tokio = { version = "1.44.2", features = ["test-util"] }
 rand = "0.8.5"
 which = "7.0.3"
 serde-saphyr = "2.0.0"

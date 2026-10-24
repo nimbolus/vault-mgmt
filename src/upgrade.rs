@@ -1,5 +1,8 @@
 use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
-use kube::{api::DeleteParams, runtime::wait::conditions::is_pod_running};
+use kube::{
+    api::{DeleteParams, Preconditions},
+    runtime::wait::conditions::{is_deleted, is_pod_running},
+};
 use secrecy::SecretString;
 use tokio_retry::{
     Retry,
@@ -9,7 +12,7 @@ use tracing::*;
 
 use crate::{
     ExecIn, StepDown, Unseal, VAULT_PORT, VaultVersion, is_active, is_pod_exporting_seal_status,
-    {GetSealStatus, is_seal_status_initialized},
+    retry_request, wait_for, {GetSealStatus, is_seal_status_initialized},
     {PodApi, StatefulSetApi, is_sealed, list_vault_pods_in},
     {is_pod_ready, is_pod_standby, is_pod_unsealed},
 };
@@ -55,39 +58,52 @@ impl PodApi {
                 self.http(name, VAULT_PORT).await?.step_down(token).await?;
 
                 // Wait for other pod to take over
-                kube::runtime::wait::await_condition(
-                    self.api.clone(),
-                    name,
-                    is_pod_standby(self.flavor),
-                )
-                .await?;
+                wait_for(&self.api, name, is_pod_standby(self.flavor)).await?;
             }
 
-            // Delete pod
-            kube::runtime::wait::delete::delete_and_finalize(
-                self.api.clone(),
-                name,
-                &DeleteParams::default(),
-            )
+            // Delete pod. The uid precondition keeps a retried request from
+            // deleting the replacement pod the statefulset already created.
+            let uid = pod
+                .metadata
+                .uid
+                .clone()
+                .ok_or(anyhow::anyhow!("pod {} does not have a uid", name))?;
+            let dp = DeleteParams {
+                preconditions: Some(Preconditions {
+                    uid: Some(uid.clone()),
+                    resource_version: None,
+                }),
+                ..DeleteParams::default()
+            };
+            match retry_request(&format!("deleting pod {}", name), || {
+                self.api.delete(name, &dp)
+            })
             .await
-            .map_err(|e| anyhow::anyhow!("deleting pod {}: {}", name, e))?;
+            {
+                Ok(_) => {}
+                // gone (404) or replaced (409) already, e.g. by an earlier attempt
+                Err(e)
+                    if matches!(
+                        e.downcast_ref::<kube::Error>(),
+                        Some(kube::Error::Api(status)) if status.code == 404 || status.code == 409
+                    ) => {}
+                Err(e) => return Err(e.context(format!("deleting pod {}", name))),
+            }
+
+            // Wait for pod to be deleted
+            wait_for(&self.api, name, is_deleted(&uid)).await?;
         }
 
         // Wait for pod to be running
-        kube::runtime::wait::await_condition(self.api.clone(), name, is_pod_running())
+        wait_for(&self.api, name, is_pod_running())
             .await
-            .map_err(|e| anyhow::anyhow!("waiting for pod {} to be running: {}", name, e))?;
+            .map_err(|e| e.context(format!("waiting for pod {} to be running", name)))?;
 
         // Wait for pod to export its seal status
-        kube::runtime::wait::await_condition(
-            self.api.clone(),
-            name,
-            is_pod_exporting_seal_status(self.flavor),
-        )
-        .await?;
+        wait_for(&self.api, name, is_pod_exporting_seal_status(self.flavor)).await?;
 
         // Refresh pod
-        let pod = self.api.get(name).await?;
+        let pod = retry_request(&format!("getting pod {}", name), || self.api.get(name)).await?;
 
         if Self::is_current(&pod, target)? {
             // Pod is sealed
@@ -122,14 +138,9 @@ impl PodApi {
                 }
             }
             // Wait for pod to be unsealed
-            kube::runtime::wait::await_condition(
-                self.api.clone(),
-                name,
-                is_pod_unsealed(self.flavor),
-            )
-            .await?;
+            wait_for(&self.api, name, is_pod_unsealed(self.flavor)).await?;
             // Wait for pod to be ready
-            kube::runtime::wait::await_condition(self.api.clone(), name, is_pod_ready()).await?;
+            wait_for(&self.api, name, is_pod_ready()).await?;
         }
 
         Ok(())
@@ -173,20 +184,16 @@ impl StatefulSetApi {
     ) -> anyhow::Result<()> {
         let target = VaultVersion::try_from(&sts)?;
 
-        let standby = pods
-            .api
-            .list(&list_vault_pods_in(&sts, self.flavor, ExecIn::Standby)?)
-            .await?;
+        let lp = list_vault_pods_in(&sts, self.flavor, ExecIn::Standby)?;
+        let standby = retry_request("listing standby pods", || pods.api.list(&lp)).await?;
 
         if standby.items.is_empty() {
             warn!("no standby pods found, skipping upgrade");
             return Ok(());
         }
 
-        let active = pods
-            .api
-            .list(&list_vault_pods_in(&sts, self.flavor, ExecIn::Active)?)
-            .await?;
+        let lp = list_vault_pods_in(&sts, self.flavor, ExecIn::Active)?;
+        let active = retry_request("listing active pods", || pods.api.list(&lp)).await?;
 
         if active.items.is_empty() {
             warn!("no active pods found, skipping upgrade");
