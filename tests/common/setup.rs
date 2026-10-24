@@ -59,7 +59,7 @@ pub(crate) async fn setup(
         Flavor::Vault => include_str!("values-vault.yaml").to_string(),
     };
 
-    helm::add_repo().await.unwrap();
+    helm::add_repo(flavor).await.unwrap();
     helm::install_chart(&namespace, &name, Some(version), flavor, values)
         .await
         .unwrap();

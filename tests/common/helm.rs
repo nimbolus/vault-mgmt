@@ -2,16 +2,21 @@ use std::process::Stdio;
 use tokio::{io::AsyncWriteExt, process::Command};
 use vault_mgmt_lib::Flavor;
 
-pub async fn add_repo() -> anyhow::Result<String> {
+fn repo(flavor: Flavor) -> (&'static str, &'static str) {
+    match flavor {
+        Flavor::OpenBao => ("openbao", "https://openbao.github.io/openbao-helm"),
+        Flavor::Vault => ("hashicorp", "https://helm.releases.hashicorp.com"),
+    }
+}
+
+pub async fn add_repo(flavor: Flavor) -> anyhow::Result<String> {
     let helm = which::which("helm")?;
 
+    let (name, url) = repo(flavor);
+
+    // succeeds if the repo already exists with the same configuration
     let cmd = Command::new(helm)
-        .args([
-            "repo",
-            "add",
-            "openbao",
-            "https://openbao.github.io/openbao-helm",
-        ])
+        .args(["repo", "add", name, url])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -23,10 +28,8 @@ pub async fn add_repo() -> anyhow::Result<String> {
     let stderr = String::from_utf8(output.stderr)?;
 
     match output.status.success() {
-        false if stdout.contains("already exists with the same configuration") => {
-            Err(anyhow::anyhow!("failed to add helm repo: {}", stderr))
-        }
-        _ => Ok(stdout),
+        true => Ok(stdout),
+        false => Err(anyhow::anyhow!("failed to add helm repo: {}", stderr)),
     }
 }
 
@@ -40,15 +43,13 @@ pub async fn install_chart(
     let helm = which::which("helm")?;
 
     let fullname_override = format!("fullnameOverride={}", name);
+    let chart = format!("{}/{}", repo(flavor).0, flavor);
 
     let mut args = vec![
         "upgrade",
         "--install",
         name,
-        match flavor {
-            Flavor::OpenBao => "openbao/openbao",
-            Flavor::Vault => "hashicorp/vault",
-        },
+        &chart,
         "--namespace",
         namespace,
         "-f",
