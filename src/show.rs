@@ -1,11 +1,15 @@
-use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
 use kube::api::Api;
 use prettytable::{Attr, Cell, Row, Table, color};
 
 use crate::{Flavor, list_vault_pods};
 
 #[tracing::instrument(skip_all)]
-pub async fn construct_table(api: &Api<Pod>, flavor: Flavor) -> anyhow::Result<Table> {
+pub async fn construct_table(
+    api: &Api<Pod>,
+    sts: &StatefulSet,
+    flavor: Flavor,
+) -> anyhow::Result<Table> {
     let mut table = Table::new();
     table.set_titles(row![
         "NAME",
@@ -17,7 +21,8 @@ pub async fn construct_table(api: &Api<Pod>, flavor: Flavor) -> anyhow::Result<T
         "READY",
     ]);
 
-    let pods = api.list(&list_vault_pods(&flavor.to_string())).await?;
+    let lp = list_vault_pods(sts)?;
+    let pods = api.list(&lp).await?;
 
     let get_vault_label = |pod: &Pod, label: &str| match pod.metadata.labels {
         Some(ref labels) => labels

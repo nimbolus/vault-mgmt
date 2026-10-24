@@ -1,11 +1,43 @@
 use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
-use kube::{Api, api::ListParams};
+use kube::{Api, api::ListParams, core::Selector};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::{BytesBody, HttpForwarderService};
+use crate::{BytesBody, ExecIn, HttpForwarderService};
 
-pub fn list_vault_pods(flavor: &str) -> ListParams {
-    ListParams::default().labels(&format!("app.kubernetes.io/name={}", flavor))
+/// The selector of the pods managed by the statefulset
+fn pod_selector(sts: &StatefulSet) -> anyhow::Result<Selector> {
+    let name = sts.metadata.name.as_deref().unwrap_or_default();
+    let spec = sts
+        .spec
+        .as_ref()
+        .ok_or(anyhow::anyhow!("statefulset {} does not have a spec", name))?;
+
+    let selector = Selector::try_from(spec.selector.clone())
+        .map_err(|e| anyhow::anyhow!("invalid selector of statefulset {}: {}", name, e))?;
+
+    // an empty selector would match every pod in the namespace
+    if selector.selects_all() {
+        anyhow::bail!("statefulset {} has an empty selector", name);
+    }
+
+    Ok(selector)
+}
+
+/// List the vault pods of the statefulset
+pub fn list_vault_pods(sts: &StatefulSet) -> anyhow::Result<ListParams> {
+    Ok(ListParams::default().labels_from(&pod_selector(sts)?))
+}
+
+/// List the vault pods of the statefulset that are in the given state
+pub fn list_vault_pods_in(
+    sts: &StatefulSet,
+    flavor: Flavor,
+    exec_in: ExecIn,
+) -> anyhow::Result<ListParams> {
+    let mut selector = pod_selector(sts)?;
+    selector.extend([exec_in.to_expression(&flavor.to_string())]);
+
+    Ok(ListParams::default().labels_from(&selector))
 }
 
 /// Check if the vault pod is sealed based on its labels
@@ -133,5 +165,52 @@ pub struct StatefulSetApi {
 impl StatefulSetApi {
     pub fn new(api: Api<StatefulSet>, flavor: Flavor) -> Self {
         Self { api, flavor }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use k8s_openapi::api::apps::v1::StatefulSet;
+
+    use crate::{ExecIn, Flavor, list_vault_pods, list_vault_pods_in};
+
+    async fn statefulset() -> StatefulSet {
+        let file = tokio::fs::read_to_string(format!(
+            "tests/resources/installed/{}.yaml",
+            "apis/apps/v1/namespaces/vault-mgmt-e2e/statefulsets/vault-mgmt-e2e-2274"
+        ))
+        .await
+        .unwrap();
+
+        serde_saphyr::from_str(&file).unwrap()
+    }
+
+    #[tokio::test]
+    async fn lists_pods_by_statefulset_selector() {
+        let lp = list_vault_pods(&statefulset().await).unwrap();
+
+        assert_eq!(
+            lp.label_selector.unwrap(),
+            "app.kubernetes.io/instance=vault-mgmt-e2e-2274,app.kubernetes.io/name=vault,component=server"
+        );
+    }
+
+    #[tokio::test]
+    async fn lists_pods_in_state_by_statefulset_selector() {
+        let lp = list_vault_pods_in(&statefulset().await, Flavor::Vault, ExecIn::Standby).unwrap();
+
+        assert_eq!(
+            lp.label_selector.unwrap(),
+            "app.kubernetes.io/instance=vault-mgmt-e2e-2274,app.kubernetes.io/name=vault,component=server,vault-active=false"
+        );
+    }
+
+    #[tokio::test]
+    async fn refuses_empty_selector() {
+        let mut sts = statefulset().await;
+        sts.spec.as_mut().unwrap().selector = Default::default();
+
+        assert!(list_vault_pods(&sts).is_err());
+        assert!(list_vault_pods_in(&sts, Flavor::Vault, ExecIn::Active).is_err());
     }
 }

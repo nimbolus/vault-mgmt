@@ -15,7 +15,7 @@ use vault_mgmt_lib::Flavor;
 
 use vault_mgmt_lib::{
     GetUnsealKeys, GetUnsealKeysFromVault, StepDown, VAULT_PORT, construct_table,
-    is_statefulset_ready, {ExecIn, exec}, {PodApi, StatefulSetApi, list_vault_pods},
+    is_statefulset_ready, {ExecIn, exec}, {PodApi, StatefulSetApi, list_vault_pods_in},
     {Unseal, get_unseal_keys, list_sealed_pods},
 };
 
@@ -38,7 +38,7 @@ struct Cli {
     )]
     log_level: tracing::Level,
 
-    /// Statefulset name
+    /// Statefulset whose pods are managed
     #[arg(short = 's', long, default_value = "vault")]
     statefulset: String,
 
@@ -201,7 +201,8 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Show {} => {
             let api = setup_api(&cli.namespace).await?;
-            let table = construct_table(&api, cli.flavor).await?;
+            let sts = get_statefulset(&cli.namespace, &cli.statefulset).await?;
+            let table = construct_table(&api, &sts, cli.flavor).await?;
 
             table.printstd();
         }
@@ -212,16 +213,15 @@ async fn main() -> anyhow::Result<()> {
             env_keys,
         } => {
             let api = setup_api(&cli.namespace).await?;
+            let sts = get_statefulset(&cli.namespace, &cli.statefulset).await?;
             let env = collect_env(env, env_keys)?;
-            exec(&api, cmd.join(" "), exec_in, cli.flavor, env).await?;
+            exec(&api, &sts, cmd.join(" "), exec_in, cli.flavor, env).await?;
         }
         Commands::StepDown { token } => {
             let api = setup_api(&cli.namespace).await?;
+            let sts = get_statefulset(&cli.namespace, &cli.statefulset).await?;
             let active = api
-                .list(
-                    &list_vault_pods(&cli.flavor.to_string())
-                        .labels(&ExecIn::Active.to_label_selector(&cli.flavor.to_string())),
-                )
+                .list(&list_vault_pods_in(&sts, cli.flavor, ExecIn::Active)?)
                 .await?;
             let active = active.iter().next().ok_or(anyhow::anyhow!(
                 "no active vault pod found. is vault sealed?"
@@ -256,7 +256,8 @@ async fn main() -> anyhow::Result<()> {
             key_cmd,
         } => {
             let api = setup_api(&cli.namespace).await?;
-            let sealed = list_sealed_pods(&api, &cli.flavor.to_string()).await?;
+            let sts = get_statefulset(&cli.namespace, &cli.statefulset).await?;
+            let sealed = list_sealed_pods(&api, &sts, cli.flavor).await?;
 
             if sealed.is_empty() {
                 return Ok(());
@@ -450,6 +451,12 @@ fn from_env(env_var_keys: Vec<String>) -> anyhow::Result<HashMap<String, SecretS
         env.insert(key, SecretString::from(value));
     }
     Ok(env)
+}
+
+/// Get the statefulset vault runs in. Its selector decides which pods are managed.
+async fn get_statefulset(namespace: &str, name: &str) -> anyhow::Result<StatefulSet> {
+    let api: Api<StatefulSet> = setup_api(namespace).await?;
+    Ok(api.get(name).await?)
 }
 
 async fn setup_api<T>(namespace: &str) -> anyhow::Result<Api<T>>

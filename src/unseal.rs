@@ -1,14 +1,14 @@
 use http::uri::Scheme;
 use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
-use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
 use kube::api::Api;
 use secrecy::{ExposeSecret, SecretString};
 use tokio::process::Command;
 
 use crate::{
-    BytesBody, ExecIn, HttpForwarderService, HttpRequest, get_unseal_keys_request, list_vault_pods,
-    unseal_request,
+    BytesBody, ExecIn, Flavor, HttpForwarderService, HttpRequest, get_unseal_keys_request,
+    list_vault_pods_in, unseal_request,
 };
 
 /// Get the unseal keys by running the specified command
@@ -28,10 +28,13 @@ pub async fn get_unseal_keys(key_cmd: &str) -> anyhow::Result<Vec<SecretString>>
 }
 
 /// List all pods that are sealed
-pub async fn list_sealed_pods(api: &Api<Pod>, flavor: &str) -> anyhow::Result<Vec<Pod>> {
-    let pods = api
-        .list(&list_vault_pods(flavor).labels(&ExecIn::Sealed.to_label_selector(flavor)))
-        .await?;
+pub async fn list_sealed_pods(
+    api: &Api<Pod>,
+    sts: &StatefulSet,
+    flavor: Flavor,
+) -> anyhow::Result<Vec<Pod>> {
+    let lp = list_vault_pods_in(sts, flavor, ExecIn::Sealed)?;
+    let pods = api.list(&lp).await?;
 
     Ok(pods.items)
 }
@@ -210,7 +213,10 @@ mod tests {
 
     use http::{Method, Request, Response, StatusCode};
     use hyper::body::Bytes;
-    use k8s_openapi::{List, api::core::v1::Pod};
+    use k8s_openapi::{
+        List,
+        api::{apps::v1::StatefulSet, core::v1::Pod},
+    };
     use kube::{Api, Client, client::Body};
     use secrecy::SecretString;
     use tokio::task::JoinHandle;
@@ -222,7 +228,8 @@ mod tests {
     };
 
     use crate::{
-        GetUnsealKeys, GetUnsealKeysFromVault, HttpForwarderService, Unseal, list_sealed_pods,
+        Flavor, GetUnsealKeys, GetUnsealKeysFromVault, HttpForwarderService, Unseal,
+        list_sealed_pods,
     };
 
     async fn mock_list_sealed(
@@ -243,7 +250,7 @@ mod tests {
                     println!("{} {} {} ", method, uri, query);
 
                     let body = match (method.as_str(), uri.as_str(), query.as_str(), watch) {
-                        ("GET", "/api/v1/namespaces/vault-mgmt-e2e/pods", "&labelSelector=vault-sealed%3Dtrue", false) => {
+                        ("GET", "/api/v1/namespaces/vault-mgmt-e2e/pods", "&labelSelector=app.kubernetes.io%2Finstance%3Dvault-mgmt-e2e-2274%2Capp.kubernetes.io%2Fname%3Dvault%2Ccomponent%3Dserver%2Cvault-sealed%3Dtrue", false) => {
                             let mut list = List::<Pod>::default();
 
                             for id in 0..=2 {
@@ -294,7 +301,15 @@ mod tests {
     async fn get_sealed_pods_returns_sealed_pods() {
         let (api, service, cancel) = setup().await;
 
-        let pods = list_sealed_pods(&api, "vault").await.unwrap();
+        let file = tokio::fs::read_to_string(format!(
+            "tests/resources/installed/{}.yaml",
+            "apis/apps/v1/namespaces/vault-mgmt-e2e/statefulsets/vault-mgmt-e2e-2274"
+        ))
+        .await
+        .unwrap();
+        let sts: StatefulSet = serde_saphyr::from_str(&file).unwrap();
+
+        let pods = list_sealed_pods(&api, &sts, Flavor::Vault).await.unwrap();
 
         assert_eq!(pods.len(), 3);
 

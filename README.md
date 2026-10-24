@@ -15,7 +15,7 @@ vault-mgmt talks to the Kubernetes API using your current kubeconfig context and
 
 ## Requirements
 
-- Vault or OpenBao deployed as a StatefulSet, e.g. with the official Helm chart. Pods are found by the label `app.kubernetes.io/name=vault` (or `openbao`).
+- Vault or OpenBao deployed as a StatefulSet, e.g. with the official Helm chart. The pods are found by the selector of the StatefulSet, so several clusters can share a namespace.
 - [Kubernetes service registration](https://developer.hashicorp.com/vault/docs/configuration/service-registration/kubernetes) enabled, so the pods carry the `vault-initialized`, `vault-sealed` and `vault-active` labels (`openbao-*` for OpenBao).
 - Kubernetes 1.32 or newer.
 - Permissions in the namespace to get, list and delete pods, to create `pods/exec` and `pods/portforward`, and to get, list and watch StatefulSets.
@@ -37,7 +37,7 @@ Release binaries can update themselves with `vault-mgmt self-update`.
 vault-mgmt show
 
 # OpenBao in another namespace
-vault-mgmt --flavor openbao --namespace openbao show
+vault-mgmt --flavor openbao --namespace openbao --statefulset openbao show
 
 # unseal all sealed pods, reading the keys from a KV secret
 export VAULT_TOKEN=...
@@ -63,7 +63,7 @@ Run `vault-mgmt help <command>` for all options of a command.
 | Option                | Default | Description                                    |
 |-----------------------|---------|------------------------------------------------|
 | `-n`, `--namespace`   | `vault` | Namespace Vault is running in                  |
-| `-s`, `--statefulset` | `vault` | Name of the StatefulSet                        |
+| `-s`, `--statefulset` | `vault` | StatefulSet whose pods are managed             |
 | `-f`, `--flavor`      | `vault` | `vault` or `openbao`                           |
 | `-d`, `--domain`      | `vault` | Domain name used to verify the TLS certificate |
 | `--no-tls`            |         | Talk plain HTTP to Vault                       |

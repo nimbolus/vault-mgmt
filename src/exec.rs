@@ -1,13 +1,16 @@
 use clap::ValueEnum;
 use futures_util::StreamExt;
-use k8s_openapi::api::core::v1::Pod;
-use kube::api::{Api, AttachParams, AttachedProcess};
+use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Pod};
+use kube::{
+    api::{Api, AttachParams, AttachedProcess},
+    core::Expression,
+};
 use secrecy::{ExposeSecret, SecretString};
 use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
 use tracing::*;
 
-use crate::{Flavor, list_vault_pods};
+use crate::{Flavor, list_vault_pods_in};
 
 #[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ExecIn {
@@ -26,11 +29,12 @@ impl std::fmt::Display for ExecIn {
 }
 
 impl ExecIn {
-    pub fn to_label_selector(&self, flavor: &str) -> String {
+    /// The label expression matching pods in this state
+    pub fn to_expression(&self, flavor: &str) -> Expression {
         match self {
-            ExecIn::Active => format!("{}-active=true", flavor),
-            ExecIn::Standby => format!("{}-active=false", flavor),
-            ExecIn::Sealed => format!("{}-sealed=true", flavor),
+            ExecIn::Active => Expression::Equal(format!("{}-active", flavor), "true".to_string()),
+            ExecIn::Standby => Expression::Equal(format!("{}-active", flavor), "false".to_string()),
+            ExecIn::Sealed => Expression::Equal(format!("{}-sealed", flavor), "true".to_string()),
         }
     }
 }
@@ -38,17 +42,14 @@ impl ExecIn {
 #[tracing::instrument(skip_all, fields(cmd, exec_in = %exec_in))]
 pub async fn exec(
     api: &Api<Pod>,
+    sts: &StatefulSet,
     cmd: String,
     exec_in: ExecIn,
     flavor: Flavor,
     env: HashMap<String, SecretString>,
 ) -> anyhow::Result<()> {
-    let pods = api
-        .list(
-            &list_vault_pods(&flavor.to_string())
-                .labels(&exec_in.to_label_selector(&flavor.to_string())),
-        )
-        .await?;
+    let lp = list_vault_pods_in(sts, flavor, exec_in)?;
+    let pods = api.list(&lp).await?;
     let pod = pods
         .items
         .first()

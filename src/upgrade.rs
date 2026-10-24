@@ -10,7 +10,7 @@ use tracing::*;
 use crate::{
     ExecIn, StepDown, Unseal, VAULT_PORT, VaultVersion, is_active, is_pod_exporting_seal_status,
     {GetSealStatus, is_seal_status_initialized},
-    {PodApi, StatefulSetApi, is_sealed, list_vault_pods},
+    {PodApi, StatefulSetApi, is_sealed, list_vault_pods_in},
     {is_pod_ready, is_pod_standby, is_pod_unsealed},
 };
 
@@ -175,10 +175,7 @@ impl StatefulSetApi {
 
         let standby = pods
             .api
-            .list(
-                &list_vault_pods(&self.flavor.to_string())
-                    .labels(&ExecIn::Standby.to_label_selector(&self.flavor.to_string())),
-            )
+            .list(&list_vault_pods_in(&sts, self.flavor, ExecIn::Standby)?)
             .await?;
 
         if standby.items.is_empty() {
@@ -188,10 +185,7 @@ impl StatefulSetApi {
 
         let active = pods
             .api
-            .list(
-                &list_vault_pods(&self.flavor.to_string())
-                    .labels(&ExecIn::Active.to_label_selector(&self.flavor.to_string())),
-            )
+            .list(&list_vault_pods_in(&sts, self.flavor, ExecIn::Active)?)
             .await?;
 
         if active.items.is_empty() {
