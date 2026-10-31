@@ -124,6 +124,27 @@ kubectl apply -f e2e-preparation.yaml
 cargo test -- --ignored
 ```
 
+### Releasing
+
+Pushing a `v*` tag runs the release workflow: it runs the test suite, checks that `CHANGELOG.md` is up to date, creates a draft release with the changelog section of the version as notes, builds the binaries and publishes the release.
+
+The changelog check regenerates `CHANGELOG.md` from the tag and compares it with the committed one. The version heading takes its date and compare link from the annotated tag. `--tag-unreleased` renders the unreleased commits as if `HEAD` was already tagged, so the changelog is generated before the tag and the tag goes on the release commit:
+
+```sh
+v=0.2.0
+convco changelog --ignore-prereleases --unreleased "$v" --tag-unreleased --output CHANGELOG.md
+git add CHANGELOG.md && git commit -m "chore: release v$v"
+git tag -a "v$v" -m "v$v"
+git push origin main "v$v"
+```
+
+- `--tag-unreleased` is not in a convco release yet, it needs a build of the `changelog-unreleased-tag` branch of [tobikris/convco](https://github.com/tobikris/convco). CI does not need it, it generates the changelog from the pushed tag.
+- `--unreleased` takes the version without the `v` prefix.
+- The tag has to be annotated and created the same day, a lightweight tag gets the commit date.
+- `chore:` commits are not listed in the changelog, so the release commit does not change it.
+
+Release candidates (tags with a `-`, like `v0.2.0-rc.1`) are published as prereleases. They are not added to `CHANGELOG.md` and need no release commit, the tag is pushed directly. The changelog check is skipped for them, their release notes cover the commits since the previous tag.
+
 ## License
 
 [MIT](LICENSE)

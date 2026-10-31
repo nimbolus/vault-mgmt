@@ -15,15 +15,31 @@ permissions:
   statuses: read
 
 jobs:
+  test:
+    name: test suite
+    uses: ./.github/workflows/test.yaml
+    permissions:
+      contents: read
+
   draft-release:
     name: create draft release
+    needs: test
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+        with:
+          # the notes cover the commits since the previous tag
+          fetch-depth: 0
+      - name: Release notes
+        id: notes
+        uses: ./.github/actions/release-notes
       - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          generate_release_notes: true
+          # tags like v0.2.0-rc.1 must not become the latest release used by self-update
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          body_path: ${{ steps.notes.outputs.path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -44,7 +60,7 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -62,6 +78,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             target/${{ matrix.target }}/release/vault-mgmt-*.tar.gz
         env:
@@ -75,4 +92,5 @@ jobs:
       - name: Publish release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${{ github.ref_name }}" --draft=false --repo "${{ github.repository }}"
+          PRERELEASE: ${{ contains(github.ref_name, '-') }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false --prerelease="$PRERELEASE" --repo "${{ github.repository }}"
