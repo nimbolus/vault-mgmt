@@ -75,3 +75,9 @@ async fn vault_upgrade_pod_succeeds_with_external_unseal() {
     )
     .await;
 }
+
+#[ignore = "needs a running kubernetes cluster and the helm cli"]
+#[tokio::test]
+async fn vault_exec_pod_succeeds() {
+    common::exec_pod_succeeds(VERSION_CURRENT, Flavor::Vault).await;
+}

@@ -1,9 +1,11 @@
+mod exec;
 mod helm;
 mod prepare;
 mod setup;
 mod show;
 mod upgrade;
 
+pub use exec::*;
 pub use helm::*;
 pub use prepare::*;
 pub use setup::*;

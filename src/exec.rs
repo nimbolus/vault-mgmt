@@ -5,6 +5,7 @@ use kube::api::{Api, AttachParams, AttachedProcess};
 use secrecy::{ExposeSecret, SecretString};
 use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
+use tracing::*;
 
 use crate::{list_vault_pods, Flavor};
 
@@ -114,16 +115,23 @@ pub async fn get_output(mut attached: AttachedProcess) -> anyhow::Result<(String
             .stderr()
             .ok_or(anyhow::anyhow!("no stderr available"))?,
     );
+    // join() drops the status receiver, which makes the background task fail
+    // with "failed to send status object" once the process exits. Take it first.
+    let status = attached
+        .take_status()
+        .ok_or(anyhow::anyhow!("no status available"))?;
+
+    // the streams end when the process exits
+    let (out, err) = tokio::join!(
+        stdout
+            .filter_map(|r| async { r.ok().and_then(|v| String::from_utf8(v.to_vec()).ok()) })
+            .collect::<Vec<_>>(),
+        stderr
+            .filter_map(|r| async { r.ok().and_then(|v| String::from_utf8(v.to_vec()).ok()) })
+            .collect::<Vec<_>>(),
+    );
     attached.join().await?;
-    let out = stdout
-        .filter_map(|r| async { r.ok().and_then(|v| String::from_utf8(v.to_vec()).ok()) })
-        .collect::<Vec<_>>()
-        .await
-        .join("");
-    let err = stderr
-        .filter_map(|r| async { r.ok().and_then(|v| String::from_utf8(v.to_vec()).ok()) })
-        .collect::<Vec<_>>()
-        .await
-        .join("");
-    Ok((out, err))
+    debug!("exec finished with status {:?}", status.await);
+
+    Ok((out.join(""), err.join("")))
 }
