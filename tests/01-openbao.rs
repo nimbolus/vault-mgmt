@@ -78,6 +78,12 @@ async fn openbao_upgrade_pod_succeeds_with_external_unseal() {
 
 #[ignore = "needs a running kubernetes cluster and the helm cli"]
 #[tokio::test]
+async fn openbao_reload_succeeds() {
+    common::reload_succeeds(VERSION_CURRENT, Flavor::OpenBao).await;
+}
+
+#[ignore = "needs a running kubernetes cluster and the helm cli"]
+#[tokio::test]
 async fn openbao_exec_pod_succeeds() {
     common::exec_pod_succeeds(VERSION_CURRENT, Flavor::OpenBao).await;
 }

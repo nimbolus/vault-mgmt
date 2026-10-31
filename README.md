@@ -9,6 +9,7 @@ vault-mgmt talks to the Kubernetes API using your current kubeconfig context and
 - **Show** the state of all pods: phase, image, and whether each one is initialized, sealed, active and ready.
 - **Unseal** all sealed pods, with keys read from a Vault KV secret or printed by a local command.
 - **Step down** the active pod.
+- **Reload** the configuration of all pods, e.g. to pick up renewed TLS certificates.
 - **Upgrade** the whole cluster without downtime: standby pods are upgraded first, then the active pod steps down and is upgraded last.
 - **Exec** a command in the active, a standby or a sealed pod.
 - **Wait** until the StatefulSet is ready.
@@ -49,6 +50,12 @@ vault-mgmt unseal --key-cmd "pass show vault/unseal-keys"
 # step down the active pod
 vault-mgmt step-down
 
+# reload all pods, e.g. after their TLS certificate was renewed
+vault-mgmt reload
+
+# reload only the standby pods
+vault-mgmt reload --in standby
+
 # rolling upgrade after changing the image of the StatefulSet
 vault-mgmt upgrade --key-cmd "pass show vault/unseal-keys"
 
@@ -82,8 +89,12 @@ Unseal keys come from one of two sources:
 
 `upgrade` deletes each pod whose image tag differs from the one in the StatefulSet and waits for it to be recreated and unsealed. Standby pods go first. Then the active pod steps down and is upgraded once a standby has taken over.
 
-- `--force-upgrade` rolls every pod, even if it is already up to date, for example to pick up rotated certificates.
+- `--force-upgrade` rolls every pod, even if it is already up to date, for example after changing its configuration. Renewed certificates do not need a restart, see [Certificate renewal](#certificate-renewal).
 - `--do-not-unseal` waits for the pods to be unsealed by something else, e.g. auto-unseal.
+
+### Certificate renewal
+
+Vault reads its TLS certificate only at startup and on SIGHUP. When the certificate is renewed, e.g. by cert-manager, the pods keep serving the old one until it expires. `reload` sends SIGHUP to the `vault server` process (`bao server` for OpenBao) in every pod, so the renewed certificate is used without a restart. `--in active`, `--in standby` or `--in sealed` limits it to the pods in that state. If no pod matches, `reload` fails, unless `--ignore-not-found` is given, e.g. for `--in sealed` in a scheduled job. Sending SIGHUP to pid 1 of the container is not enough with the Helm chart, as pid 1 is a shell that does not forward it.
 
 ### Shell completion
 

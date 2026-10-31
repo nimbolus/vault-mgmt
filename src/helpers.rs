@@ -112,6 +112,14 @@ impl Flavor {
     pub fn container_name(&self) -> String {
         self.to_string()
     }
+
+    /// Name of the server binary
+    pub fn binary_name(&self) -> &'static str {
+        match self {
+            Flavor::OpenBao => "bao",
+            Flavor::Vault => "vault",
+        }
+    }
 }
 
 impl PodApi {

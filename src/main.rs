@@ -15,7 +15,7 @@ use vault_mgmt_lib::Flavor;
 
 use vault_mgmt_lib::{
     GetUnsealKeys, GetUnsealKeysFromVault, StepDown, VAULT_PORT, construct_table,
-    is_statefulset_ready, retry_request, wait_for, {ExecIn, exec},
+    is_statefulset_ready, reload, retry_request, wait_for, {ExecIn, exec},
     {PodApi, StatefulSetApi, list_vault_pods_in}, {Unseal, get_unseal_keys, list_sealed_pods},
 };
 
@@ -129,6 +129,20 @@ enum Commands {
     /// Wait until the statefulset is ready
     WaitUntilReady {},
 
+    /// Reload the configuration of the vault pods
+    ///
+    /// This sends SIGHUP to the vault server process in the pods, which makes vault
+    /// pick up renewed TLS certificates without a restart.
+    Reload {
+        /// only reload the pods in this state, all pods if not specified
+        #[arg(short = 'i', long = "in", value_name = "IN", value_enum)]
+        reload_in: Option<ExecIn>,
+
+        /// do not fail if no pod matches
+        #[arg(long)]
+        ignore_not_found: bool,
+    },
+
     /// Do a rolling upgrade of the vault pods without downtime
     ///
     /// This will upgrade the standby pods first by deleting the pods and them getting recreated
@@ -148,7 +162,8 @@ enum Commands {
 
         /// Force upgrading the pods even when the version is already updated.
         /// If this is not enabled, every upgraded pod will be skipped.
-        /// This is useful when you want to roll the pods gracefully for other reasons (e.g. certificate rotation).
+        /// This is useful when you want to roll the pods gracefully for other reasons (e.g. configuration changes).
+        /// Renewed certificates do not need a restart, use the reload command instead.
         #[arg(short = 'f', long)]
         force_upgrade: bool,
 
@@ -243,6 +258,14 @@ async fn main() -> anyhow::Result<()> {
         Commands::WaitUntilReady {} => {
             let api: Api<StatefulSet> = setup_api(&cli.namespace).await?;
             wait_for(&api, &cli.statefulset, is_statefulset_ready()).await?;
+        }
+        Commands::Reload {
+            reload_in,
+            ignore_not_found,
+        } => {
+            let api = setup_api(&cli.namespace).await?;
+            let sts = get_statefulset(&cli.namespace, &cli.statefulset).await?;
+            reload(&api, &sts, cli.flavor, reload_in, ignore_not_found).await?;
         }
         Commands::Unseal {
             token,
