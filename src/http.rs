@@ -9,9 +9,14 @@ use hyper::{
 use hyper_util::rt::TokioIo;
 use rustls::crypto::ring;
 use secrecy::{ExposeSecret, SecretString};
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    time::timeout,
+};
 use tokio_rustls::rustls::{RootCertStore, pki_types};
 use tracing::*;
+
+use crate::ATTEMPT_TIMEOUT;
 
 pub type BytesBody = BoxBody<Bytes, Infallible>;
 
@@ -22,7 +27,7 @@ where
     B: Body,
 {
     /// Send an HTTP request and return the response
-    async fn send_request(&mut self, req: Request<B>) -> hyper::Result<Response<Bytes>>;
+    async fn send_request(&mut self, req: Request<B>) -> anyhow::Result<Response<Bytes>>;
 
     /// Wait until the connection is ready to send requests
     async fn ready(&mut self) -> anyhow::Result<()>;
@@ -78,16 +83,24 @@ impl<B> HttpRequest<B> for HttpForwarderService<B>
 where
     B: Body<Data = Bytes, Error = Infallible> + Send + 'static,
 {
-    async fn send_request(&mut self, req: Request<B>) -> hyper::Result<Response<Bytes>> {
-        let (parts, body) = self.sender.send_request(req).await?.into_parts();
-        let body = body.boxed().collect().await?.to_bytes();
-        Ok(Response::from_parts(parts, body))
+    /// Fails if there is no complete response within [`ATTEMPT_TIMEOUT`], as a
+    /// port-forward can die without the connection being closed.
+    async fn send_request(&mut self, req: Request<B>) -> anyhow::Result<Response<Bytes>> {
+        let response = async {
+            let (parts, body) = self.sender.send_request(req).await?.into_parts();
+            let body = body.boxed().collect().await?.to_bytes();
+            Ok::<_, hyper::Error>(Response::from_parts(parts, body))
+        };
+
+        Ok(timeout(ATTEMPT_TIMEOUT, response)
+            .await
+            .map_err(|_| anyhow::anyhow!("no response within {:?}", ATTEMPT_TIMEOUT))??)
     }
 
     async fn ready(&mut self) -> anyhow::Result<()> {
-        self.sender
-            .ready()
+        timeout(ATTEMPT_TIMEOUT, self.sender.ready())
             .await
+            .map_err(|_| anyhow::anyhow!("connection not ready within {:?}", ATTEMPT_TIMEOUT))?
             .map_err(|e| anyhow::anyhow!("{}", e))
     }
 }
@@ -118,9 +131,11 @@ where
     .with_root_certificates(root_cert_store)
     .with_no_client_auth();
 
-    let tls_stream = tokio_rustls::TlsConnector::from(Arc::new(tls))
-        .connect(pki_types::ServerName::try_from(domain)?.to_owned(), stream)
-        .await?;
+    let connect = tokio_rustls::TlsConnector::from(Arc::new(tls))
+        .connect(pki_types::ServerName::try_from(domain)?.to_owned(), stream);
+    let tls_stream = timeout(ATTEMPT_TIMEOUT, connect)
+        .await
+        .map_err(|_| anyhow::anyhow!("no tls handshake within {:?}", ATTEMPT_TIMEOUT))??;
 
     Ok(tls_stream)
 }
@@ -237,6 +252,40 @@ mod tests {
         let (parts, _) = client.send_request(http_req).await.unwrap().into_parts();
 
         assert!(parts.status.is_success());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn send_request_times_out_without_response() {
+        // the other end of the connection never answers
+        let (stream, _server) = tokio::io::duplex(1024);
+
+        let mut client = HttpForwarderService::http(stream).await.unwrap();
+
+        let http_req = hyper::Request::builder()
+            .uri("/")
+            .method(hyper::Method::GET)
+            .body(Empty::<Bytes>::new())
+            .unwrap();
+
+        let err = client.send_request(http_req).await.unwrap_err();
+
+        assert!(err.to_string().starts_with("no response within"), "{}", err);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tls_handshake_times_out_without_response() {
+        let (stream, _server) = tokio::io::duplex(1024);
+
+        let err = HttpForwarderService::<Empty<Bytes>>::https("vault", stream)
+            .await
+            .err()
+            .unwrap();
+
+        assert!(
+            err.to_string().starts_with("no tls handshake within"),
+            "{}",
+            err
+        );
     }
 
     // TODO: do not use remote host for testing

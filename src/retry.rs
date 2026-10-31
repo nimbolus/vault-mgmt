@@ -20,6 +20,9 @@ pub const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(60);
 /// How long to wait for a condition in total before giving up.
 pub const WAIT_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// How long to pause between two polls of the Vault API.
+pub const POLL_INTERVAL: Duration = Duration::from_millis(500);
+
 /// How often a request is attempted before giving up. Resets come in bursts,
 /// 8 attempts wait up to 16s in total.
 const MAX_ATTEMPTS: usize = 8;

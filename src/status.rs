@@ -2,8 +2,12 @@ use http_body_util::{BodyExt, Empty};
 use hyper::body::Bytes;
 use kube::runtime::wait::Condition;
 use secrecy::SecretString;
+use tokio::time::{Instant, sleep};
 
-use crate::{BytesBody, HttpRequest, raft_configuration_request, seal_status_request};
+use crate::{
+    BytesBody, HttpRequest, POLL_INTERVAL, WAIT_TIMEOUT, raft_configuration_request,
+    seal_status_request,
+};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct PodSealStatus {
@@ -37,7 +41,8 @@ pub trait GetSealStatus {
     /// Get vault pod's seal status
     async fn seal_status(&mut self) -> anyhow::Result<PodSealStatus>;
 
-    /// Wait for vault pod's seal status to match the provided condition
+    /// Wait for vault pod's seal status to match the provided condition.
+    /// Gives up after [`WAIT_TIMEOUT`].
     async fn await_seal_status(
         &mut self,
         cond: impl Condition<PodSealStatus> + Send,
@@ -67,11 +72,17 @@ where
         &mut self,
         cond: impl Condition<PodSealStatus> + Send,
     ) -> Result<Option<PodSealStatus>, anyhow::Error> {
+        let deadline = Instant::now() + WAIT_TIMEOUT;
+
         loop {
             let status = self.seal_status().await?;
             if cond.matches_object(Some(&status)) {
                 return Ok(Some(status));
             }
+            if Instant::now() >= deadline {
+                anyhow::bail!("timed out after {:?} waiting for seal status", WAIT_TIMEOUT);
+            }
+            sleep(POLL_INTERVAL).await;
         }
     }
 }
@@ -137,7 +148,8 @@ pub trait GetRaftConfiguration {
         token: SecretString,
     ) -> anyhow::Result<RaftConfiguration>;
 
-    /// Wait for vault pod's raft configuration to match the provided condition
+    /// Wait for vault pod's raft configuration to match the provided condition.
+    /// Gives up after [`WAIT_TIMEOUT`].
     async fn await_raft_configuration(
         &mut self,
         token: SecretString,
@@ -172,11 +184,20 @@ where
         token: SecretString,
         cond: impl Condition<RaftConfiguration> + Send,
     ) -> Result<Option<RaftConfiguration>, anyhow::Error> {
+        let deadline = Instant::now() + WAIT_TIMEOUT;
+
         loop {
             let config = self.raft_configuration(token.clone()).await?;
             if cond.matches_object(Some(&config)) {
                 return Ok(Some(config));
             }
+            if Instant::now() >= deadline {
+                anyhow::bail!(
+                    "timed out after {:?} waiting for raft configuration",
+                    WAIT_TIMEOUT
+                );
+            }
+            sleep(POLL_INTERVAL).await;
         }
     }
 }
@@ -204,6 +225,8 @@ pub fn raft_configuration_all_voters() -> impl Condition<RaftConfiguration> {
 #[cfg(test)]
 mod tests {
 
+    use http::{Request, Response};
+    use hyper::body::Bytes;
     use secrecy::SecretString;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
@@ -211,9 +234,64 @@ mod tests {
     };
 
     use crate::{
-        GetRaftConfiguration, GetSealStatus, HttpForwarderService, RaftConfiguration,
-        is_seal_status_initialized, raft_configuration_all_voters, raft_configuration_any_leader,
+        BytesBody, GetRaftConfiguration, GetSealStatus, HttpForwarderService, HttpRequest,
+        PodSealStatus, RaftConfiguration, is_seal_status_initialized,
+        raft_configuration_all_voters, raft_configuration_any_leader,
     };
+
+    /// Answers every request with the same body and counts the requests
+    struct Fixed {
+        body: serde_json::Value,
+        requests: usize,
+    }
+
+    impl Fixed {
+        fn new(body: serde_json::Value) -> Self {
+            Self { body, requests: 0 }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl HttpRequest<BytesBody> for Fixed {
+        async fn send_request(&mut self, _: Request<BytesBody>) -> anyhow::Result<Response<Bytes>> {
+            self.requests += 1;
+            Ok(Response::new(Bytes::from(self.body.to_string())))
+        }
+
+        async fn ready(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn waiting_for_seal_status_times_out() {
+        let mut client = Fixed::new(minimal_seal_status());
+
+        let err = client
+            .await_seal_status(|_: Option<&PodSealStatus>| false)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().starts_with("timed out after"), "{}", err);
+        // polls every 500ms for 10 minutes instead of spinning
+        assert_eq!(client.requests, 1201);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn waiting_for_raft_configuration_times_out() {
+        let mut client = Fixed::new(raft_configuration());
+
+        let err = client
+            .await_raft_configuration(
+                SecretString::from("abc"),
+                |_: Option<&RaftConfiguration>| false,
+            )
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().starts_with("timed out after"), "{}", err);
+        assert_eq!(client.requests, 1201);
+    }
 
     fn minimal_seal_status() -> serde_json::Value {
         serde_json::json!({
