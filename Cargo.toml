@@ -27,7 +27,7 @@ tracing-subscriber = { version = "0.3.19", features = [
     "registry",
     "env-filter",
 ] }
-tokio = { version = "1.44.2", features = ["full"] }
+tokio = { version = "1.54.1", features = ["full"] }
 tokio-util = "0.7.15"
 tokio-rustls = "0.26.2"
 hyper = "1.6.0"
@@ -75,7 +75,7 @@ hyper-util = { version = "0.1.11", features = [
 rustls-native-certs = "0.8.1"
 
 [dev-dependencies]
-tokio = { version = "1.44.2", features = ["test-util"] }
+tokio = { version = "1.54.1", features = ["test-util"] }
 rand = "0.8.5"
 which = "7.0.3"
 serde-saphyr = "2.0.0"
