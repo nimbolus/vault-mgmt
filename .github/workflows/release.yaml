@@ -34,7 +34,7 @@ jobs:
         id: notes
         uses: ./.github/actions/release-notes
       - name: Create draft release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: true
           # tags like v0.2.0-rc.1 must not become the latest release used by self-update
@@ -70,12 +70,12 @@ jobs:
           cd target/${{ matrix.target }}/release/
           tar czvf "vault-mgmt-${{ github.ref_name }}-${{ matrix.target }}".tar.gz \
             vault-mgmt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: vault-mgmt-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
           path: target/${{ matrix.target }}/release/vault-mgmt-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
       - name: Attach binary to draft release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
